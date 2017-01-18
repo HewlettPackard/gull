@@ -1,0 +1,12 @@
+build
+/Debug/
+.cproject
+.project
+.settings
+*.kdev4
+*~
+/dummyIncludes
+*.kate-swp
+cscope*
+nul
+output.log

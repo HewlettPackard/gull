@@ -1,0 +1,6 @@
+add_nvmm_test(test_pool_region)
+if(ZONE)
+  add_nvmm_test(test_zone_heap)
+else()
+  add_nvmm_test(test_dist_heap)  
+endif()  
