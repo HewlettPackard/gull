@@ -1,9 +1,6 @@
-# Non-Volatile Memory Manager
+# Non-Volatile Memory Manager (NVMM)
 
 Author: Yupu Zhang (yupu.zhang@hpe.com)
-
-## Name
-Non-Volatile Memory Manager (NVMM)
 
 ## Description
 
@@ -43,12 +40,15 @@ NVMM runs on both NUMA and FAM systems, but the current release is for NUMA only
 
 ## Dependencies
 
-NVMM requires a l4tm (Linux for The Machine) system, e.g., build-l4tm-X.u.labs.hpecorp.net
-(X=1,2,3,4). Please install the following dependencies
+NVMM depends on cmake, libboost, libfam-atomic (https://github.com/FabricAttachedMemory/libfam-atomic), and nvml (https://github.com/FabricAttachedMemory/nvml). 
+
+For internal users who have access to an l4tm (Linux for The Machine) system, e.g.,
+build-l4tm-X.u.labs.hpecorp.net (X=1,2,3,4). Please install the following dependencies
 ```
 $ sudo apt-get install cmake libboost-all-dev
 $ sudo apt-get install libfam-atomic2 libfam-atomic2-dbg libfam-atomic2-dev libpmem libpmem-dev
 ```
+Please email Robert Chapman (robert.chapman@hpe.com) for getting access to build-l4tm-X.u.labs.hpecorp.net.
 
 ## Build & Test
 
@@ -220,6 +220,3 @@ int main(int argc, char **argv)
 
 - Crash recovery is still work in progress
 - FAM support is still work in progress
-
-## See Also
-Alps, MPGC
