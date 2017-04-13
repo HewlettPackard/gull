@@ -130,7 +130,6 @@ TEST(MemoryManager, Heap)
 }
 
 // TODO
-//#ifndef ZONE
 TEST(MemoryManager, HeapWithMapUnmapPointer)
 {
     PoolId pool_id = 1;
@@ -187,7 +186,6 @@ TEST(MemoryManager, HeapWithMapUnmapPointer)
     EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));    
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 }
-//#endif
 
 TEST(MemoryManager, HeapWithGlobalLocalPtr)
 {
@@ -305,7 +303,7 @@ TEST(MemoryManager, HeapHugeObjects)
     delete buf;
 }
 
-#ifndef LFS
+#ifndef FAME
 // multi-threaded
 #ifndef ALPS
 struct thread_argument{
@@ -326,7 +324,7 @@ void *worker(void *thread_arg)
         PoolId pool_id = (PoolId)rand_uint32(1, Pool::kMaxPoolCount-1); // 0 is reserved
         Region *region = NULL;
         Heap *heap = NULL;
-        
+
         //ShelfIndex shelf_idx = 0;
         switch (rand_uint32(0,5))
         {
@@ -389,15 +387,12 @@ TEST(MemoryManager, MultiThreadStressTest)
     MemoryManager *mm = MemoryManager::GetInstance();
     for (PoolId pool_id = 1; pool_id < Pool::kMaxPoolCount; pool_id++)
     {
-        // TODO: this is safe for now....
         (void)mm->DestroyHeap(pool_id);
         (void)mm->DestroyRegion(pool_id);
-        Pool pool(pool_id);
-        (void)pool.Destroy();
     }
 }
 #endif // ALPS
-#endif // LFS
+#endif // FAME
 
 // multi-process
 void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
@@ -500,7 +495,6 @@ TEST(MemoryManager, MultiProcessHeap)
         ASSERT_LE(0, pid[i]);
         if (pid[i]==0)
         {
-            //nvmm::GlobalEpoch::GetInstance().resetEpochSystemInChildAfterFork();            
             // child
             LocalAllocRemoteFree(heap_pool_id, comm_shelf_id);
             exit(0); // this will leak memory (see valgrind output)
@@ -529,94 +523,89 @@ TEST(MemoryManager, MultiProcessHeap)
     EXPECT_EQ(NO_ERROR, shelf.Destroy());        
 }
 
-void stress(int count)
-{
-    assert(count != 0);    
-    ErrorCode ret = NO_ERROR;
-    MemoryManager *mm = MemoryManager::GetInstance();
-    size_t size = 8*1024*1024LLU; // 8MB
-    for (int i=0; i<count; i++)
-    {
-        PoolId pool_id = (PoolId)rand_uint32(1, Pool::kMaxPoolCount-1); // 0 is reserved
-        Region *region = NULL;
-        Heap *heap = NULL;
-        
-        //ShelfIndex shelf_idx = 0;
-        switch (rand_uint32(0,5))
-        {
-        case 0:
-            mm->CreateRegion(pool_id, size);
-            break;
-        case 1:
-            //mm->DestroyRegion(pool_id);
-            break;
-        case 2:
-            ret = mm->FindRegion(pool_id, &region);
-            if (ret == NO_ERROR && region != NULL)
-                delete region;
-            break;
-        case 3:
-            mm->CreateHeap(pool_id, size);
-            break;
-        case 4:
-            //mm->DestroyHeap(pool_id);
-            break;
-        case 5:
-            ret = mm->FindHeap(pool_id, &heap);
-            if (ret == NO_ERROR && heap != NULL)
-                delete heap;
-            break;
-        default:
-            assert(0);
-            break;
-        }
-    }
-}
-
 // TODO: there seems to be a bug in libfam-atomic that may cause this test case to fail
-#ifdef FAM1
-TEST(MemoryManager, MultiProcessNVMM)
-{
-    int const process_count = 4;
-    int const loop_count = 100;
-    
-    pid_t pid[process_count];
-    for (int i=0; i< process_count; i++)
-    {
-        pid[i] = fork();
-        ASSERT_LE(0, pid[i]);
-        if (pid[i]==0)
-        {
-            //nvmm::GlobalEpoch::GetInstance().resetEpochSystemInChildAfterFork();            
-            // child
-            stress(loop_count);
-            exit(0); // this will leak memory (see valgrind output)
-        }
-        else
-        {
-            // parent
-            continue;
-        }
-    }
 
-    for (int i=0; i< process_count; i++)
-    {    
-        int status;
-        waitpid(pid[i], &status, 0);
-    }
+// void stress(int count)
+// {
+//     assert(count != 0);
+//     ErrorCode ret = NO_ERROR;
+//     MemoryManager *mm = MemoryManager::GetInstance();
+//     size_t size = 8*1024*1024LLU; // 8MB
+//     for (int i=0; i<count; i++)
+//     {
+//         PoolId pool_id = (PoolId)rand_uint32(1, Pool::kMaxPoolCount-1); // 0 is reserved
+//         Region *region = NULL;
+//         Heap *heap = NULL;
 
-    // delete all created pools    
-    MemoryManager *mm = MemoryManager::GetInstance();
-    for (PoolId pool_id = 1; pool_id < Pool::kMaxPoolCount; pool_id++)
-    {
-        // TODO: this is safe for now....
-        (void)mm->DestroyHeap(pool_id);
-        (void)mm->DestroyRegion(pool_id);
-        Pool pool(pool_id);
-        (void)pool.Destroy();
-    }    
-}
-#endif
+//         //ShelfIndex shelf_idx = 0;
+//         switch (rand_uint32(0,5))
+//         {
+//         case 0:
+//             mm->CreateRegion(pool_id, size);
+//             break;
+//         case 1:
+//             mm->DestroyRegion(pool_id);
+//             break;
+//         case 2:
+//             ret = mm->FindRegion(pool_id, &region);
+//             if (ret == NO_ERROR && region != NULL)
+//                 delete region;
+//             break;
+//         case 3:
+//             mm->CreateHeap(pool_id, size);
+//             break;
+//         case 4:
+//             mm->DestroyHeap(pool_id);
+//             break;
+//         case 5:
+//             ret = mm->FindHeap(pool_id, &heap);
+//             if (ret == NO_ERROR && heap != NULL)
+//                 delete heap;
+//             break;
+//         default:
+//             assert(0);
+//             break;
+//         }
+//     }
+// }
+
+// TEST(MemoryManager, MultiProcessNVMM)
+// {
+//     int const process_count = 4;
+//     int const loop_count = 100;
+
+//     pid_t pid[process_count];
+//     for (int i=0; i< process_count; i++)
+//     {
+//         pid[i] = fork();
+//         ASSERT_LE(0, pid[i]);
+//         if (pid[i]==0)
+//         {
+//             // child
+//             stress(loop_count);
+//             exit(0); // this will leak memory (see valgrind output)
+//         }
+//         else
+//         {
+//             // parent
+//             continue;
+//         }
+//     }
+
+//     for (int i=0; i< process_count; i++)
+//     {
+//         int status;
+//         waitpid(pid[i], &status, 0);
+//     }
+
+//     // delete all created pools
+//     MemoryManager *mm = MemoryManager::GetInstance();
+//     for (PoolId pool_id = 1; pool_id < Pool::kMaxPoolCount; pool_id++)
+//     {
+//         (void)mm->DestroyHeap(pool_id);
+//         (void)mm->DestroyRegion(pool_id);
+//     }
+// }
 
 int main(int argc, char** argv)
 {
@@ -624,5 +613,3 @@ int main(int argc, char** argv)
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
-
-

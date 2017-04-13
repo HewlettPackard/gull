@@ -30,6 +30,7 @@
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 #include <unistd.h> // for getpagesize()
 #include <mutex>
+#include <atomic>
 #include <string>
 #include <boost/filesystem.hpp>
 
@@ -58,12 +59,12 @@ namespace nvmm {
  */
 class MemoryManager::Impl_
 {
-public:    
+public:
     static std::string const kRootShelfPath; // path of the root shelf
 
     Impl_()
-        : is_ready_(false), root_shelf_(kRootShelfPath), locks_(NULL)
-    {        
+        : is_ready_(false), root_shelf_(kRootShelfPath), locks_(NULL), types_(NULL)
+    {
     }
 
     ~Impl_()
@@ -72,25 +73,35 @@ public:
 
     ErrorCode Init();
     ErrorCode Final();
-        
+
     ErrorCode MapPointer(GlobalPtr ptr, size_t size,
                          void *addr_hint, int prot, int flags, void **mapped_addr);
     ErrorCode UnmapPointer(GlobalPtr ptr, void *mapped_addr, size_t size);
 
     void *GlobalToLocal(GlobalPtr ptr);
     GlobalPtr LocalToGlobal(void *addr);
-    
-    ErrorCode CreateHeap(PoolId id, size_t shelf_size); 
+
+    ErrorCode CreateHeap(PoolId id, size_t shelf_size);
     ErrorCode DestroyHeap(PoolId id);
     ErrorCode FindHeap(PoolId id, Heap **heap);
     Heap *FindHeap(PoolId id);
-    
-    ErrorCode CreateRegion(PoolId id, size_t size); 
+
+    ErrorCode CreateRegion(PoolId id, size_t size);
     ErrorCode DestroyRegion(PoolId id);
     ErrorCode FindRegion(PoolId id, Region **region);
     Region *FindRegion(PoolId id);
 
-private:    
+private:
+    enum PoolType {
+        NONE=0,
+        REGION,
+        HEAP
+    }; // __attribute__((__aligned__(64))) does not work for enum type???
+
+    struct PoolTypeEntry {
+        PoolType type;
+    } __attribute__((__aligned__(64)));
+
     // multi-process/multi-node
     // TODO: NOT resilient to crashes, need the epoch system
     inline void Lock(PoolId pool_id)
@@ -101,34 +112,45 @@ private:
     inline void Unlock(PoolId pool_id)
     {
         locks_[pool_id].unlock();
-    }    
+    }
 
     inline bool TryLock(PoolId pool_id)
     {
         return locks_[pool_id].trylock();
-    }    
-    
+    }
+
+    inline void SetType(PoolId pool_id, PoolType pool_type)
+    {
+        fam_atomic_u64_write((uint64_t*)&types_[pool_id], (uint64_t)pool_type);
+    }
+
+    inline PoolType GetType(PoolId pool_id)
+    {
+        return (PoolType)fam_atomic_u64_read((uint64_t*)&types_[pool_id]);
+    }
+
     bool is_ready_;
     RootShelf root_shelf_;
-    nvmm_fam_spinlock* locks_; // an array of fam_spinlock    
+    nvmm_fam_spinlock* locks_; // an array of fam_spinlock
+    PoolTypeEntry *types_; // store pool types
 };
-    
+
 std::string const MemoryManager::Impl_::kRootShelfPath = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_ROOT";
-    
+
 ErrorCode MemoryManager::Impl_::Init()
 {
-#ifdef LFS
+#ifdef FAME
     // TODO
-    // when running NVMM on LFS, we must create SHELF_BASE_DIR and the root shelf file during
+    // when running NVMM on FAME, we must create SHELF_BASE_DIR and the root shelf file during
     // bootstrap (see test/test_common/test.cc)
     // Check if SHELF_BASE_DIR exists
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);    
+    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
     if (boost::filesystem::exists(shelf_base_path) == false)
     {
         LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << SHELF_BASE_DIR;
         exit(1);
     }
-    
+
     if (root_shelf_.Exist() == false)
     {
         LOG(fatal) << "NVMM: Root shelf does not exist?" << kRootShelfPath;
@@ -166,7 +188,7 @@ ErrorCode MemoryManager::Impl_::Init()
         count++;
     }
     locks_ = (nvmm_fam_spinlock*)root_shelf_.Addr();
-    
+    types_ = (PoolTypeEntry*)((char*)root_shelf_.Addr() + ShelfId::kMaxPoolCount*sizeof(nvmm_fam_spinlock));
     is_ready_ = true;
     return NO_ERROR;
 }
@@ -177,26 +199,34 @@ ErrorCode MemoryManager::Impl_::Final()
     if (ret!=NO_ERROR)
     {
         LOG(fatal) << "NVMM: Root shelf close failed" << kRootShelfPath;
-        exit(1);        
+        exit(1);
     }
-        
+
     is_ready_ = false;
-    return NO_ERROR;    
+    return NO_ERROR;
 }
-    
+
 ErrorCode MemoryManager::Impl_::CreateRegion(PoolId id, size_t size)
 {
     assert(is_ready_ == true);
     assert(id > 0);
     ErrorCode ret = NO_ERROR;
     Lock(id);
+    if (GetType(id)!=PoolType::NONE)
+    {
+        Unlock(id);
+        LOG(error) << "MemoryManager: the given id (" << (uint64_t)id << ") is in use";
+        return ID_FOUND;
+    }
     PoolRegion pool_region(id);
     ret = pool_region.Create(size);
-    Unlock(id);
     if (ret == NO_ERROR)
     {
-        return NO_ERROR;
-    }    
+        SetType(id, PoolType::REGION);
+        Unlock(id);
+        return ret;
+    }
+    Unlock(id);
     if (ret == POOL_FOUND)
     {
         LOG(error) << "MemoryManager: the given id (" << (uint64_t)id << ") is in use";
@@ -216,13 +246,21 @@ ErrorCode MemoryManager::Impl_::DestroyRegion(PoolId id)
     assert(id > 0);
     ErrorCode ret = NO_ERROR;
     Lock(id);
+    if (GetType(id)!=PoolType::REGION)
+    {
+        Unlock(id);
+        LOG(error) << "MemoryManager: region of the given id (" << (uint64_t)id << ") is not found";
+        return ID_NOT_FOUND;
+    }
     PoolRegion pool_region(id);
     ret = pool_region.Destroy();
-    Unlock(id);
     if (ret == NO_ERROR)
     {
+        SetType(id, PoolType::NONE);
+        Unlock(id);
         return NO_ERROR;
     }
+    Unlock(id);
     if (ret == POOL_NOT_FOUND)
     {
         LOG(error) << "MemoryManager: region of the given id (" << (uint64_t)id << ") is not found";
@@ -234,15 +272,21 @@ ErrorCode MemoryManager::Impl_::DestroyRegion(PoolId id)
         return ID_NOT_FOUND;
     }
 }
-    
+
 ErrorCode MemoryManager::Impl_::FindRegion(PoolId id, Region **region)
 {
     assert(is_ready_ == true);
     assert(id > 0);
     Lock(id);
-    // TODO: use smart poitner or unique pointer?    
+    if (GetType(id)!=PoolType::REGION)
+    {
+        Unlock(id);
+        LOG(error) << "MemoryManager: region of the given id (" << (uint64_t)id << ") is not found";
+        return ID_NOT_FOUND;
+    }
+    // TODO: use smart poitner or unique pointer?
     PoolRegion *pool_region = new PoolRegion(id);
-    assert(pool_region != NULL); 
+    assert(pool_region != NULL);
     Unlock(id);
     if (pool_region->Exist() == true)
     {
@@ -264,25 +308,33 @@ Region *MemoryManager::Impl_::FindRegion(PoolId id)
     Region *ret = NULL;
     (void)FindRegion(id, &ret);
     return ret;
-}   
-    
+}
+
 ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size)
 {
     assert(is_ready_ == true);
     assert(id > 0);
     ErrorCode ret = NO_ERROR;
     Lock(id);
+    if (GetType(id)!=PoolType::NONE)
+    {
+        Unlock(id);
+        LOG(error) << "MemoryManager: the given id (" << (uint64_t)id << ") is in use";
+        return ID_FOUND;
+    }
 #ifdef ZONE
     ZoneHeap heap(id);
 #else
-    DistHeap heap(id);    
+    DistHeap heap(id);
 #endif
     ret = heap.Create(size);
-    Unlock(id);
     if (ret == NO_ERROR)
     {
-        return NO_ERROR;
-    }    
+        SetType(id, PoolType::HEAP);
+        Unlock(id);
+        return ret;
+    }
+    Unlock(id);
     if (ret == POOL_FOUND)
     {
         LOG(error) << "MemoryManager: the given id (" << (uint64_t)id << ") is in use";
@@ -301,6 +353,12 @@ ErrorCode MemoryManager::Impl_::DestroyHeap(PoolId id)
     assert(id > 0);
     ErrorCode ret = NO_ERROR;
     Lock(id);
+    if (GetType(id)!=PoolType::HEAP)
+    {
+        Unlock(id);
+        LOG(error) << "MemoryManager: heap of the given id (" << (uint64_t)id << ") is not found";
+        return ID_NOT_FOUND;
+    }
 #ifdef ZONE
     ZoneHeap heap(id);
 #else
@@ -308,11 +366,13 @@ ErrorCode MemoryManager::Impl_::DestroyHeap(PoolId id)
     DistHeap heap(id);
 #endif
     ret = heap.Destroy();
-    Unlock(id);
     if (ret == NO_ERROR)
     {
+        SetType(id, PoolType::NONE);
+        Unlock(id);
         return NO_ERROR;
     }
+    Unlock(id);
     if (ret == POOL_NOT_FOUND)
     {
         LOG(error) << "MemoryManager: heap of the given id (" << (uint64_t)id << ") is not found";
@@ -324,18 +384,24 @@ ErrorCode MemoryManager::Impl_::DestroyHeap(PoolId id)
         return ID_NOT_FOUND;
     }
 }
-    
+
 ErrorCode MemoryManager::Impl_::FindHeap(PoolId id, Heap **heap)
 {
     assert(is_ready_ == true);
     assert(id > 0);
     Lock(id);
+    if (GetType(id)!=PoolType::HEAP)
+    {
+        Unlock(id);
+        LOG(error) << "MemoryManager: heap of the given id (" << (uint64_t)id << ") is not found";
+        return ID_NOT_FOUND;
+    }
     // TODO: use smart poitner or unique pointer?
 #ifdef ZONE
     ZoneHeap *heap_ = new ZoneHeap(id);
 #else
     DistHeap *heap_ = new DistHeap(id);
-#endif    
+#endif
     assert(heap_ != NULL);
     Unlock(id);
     if(heap_->Exist() == true)
@@ -357,7 +423,7 @@ Heap *MemoryManager::Impl_::FindHeap(PoolId id)
     Heap *ret = NULL;
     (void)FindHeap(id, &ret);
     return ret;
-}   
+}
 
 ErrorCode MemoryManager::Impl_::MapPointer(GlobalPtr ptr, size_t size,
                                     void *addr_hint, int prot, int flags, void **mapped_addr)
@@ -369,7 +435,7 @@ ErrorCode MemoryManager::Impl_::MapPointer(GlobalPtr ptr, size_t size,
         LOG(error) << "MemoryManager: Invalid Global Pointer: " << ptr;
         return INVALID_PTR;
     }
-    
+
     ErrorCode ret = NO_ERROR;
     ShelfId shelf_id = ptr.GetShelfId();
     PoolId pool_id = shelf_id.GetPoolId();
@@ -391,7 +457,7 @@ ErrorCode MemoryManager::Impl_::MapPointer(GlobalPtr ptr, size_t size,
     assert(aligned_size % page_size == 0);
 
     void *aligned_addr = NULL;
-    
+
     // TODO: this is way too costly
     // open the pool
     Pool pool(pool_id);
@@ -409,7 +475,7 @@ ErrorCode MemoryManager::Impl_::MapPointer(GlobalPtr ptr, size_t size,
     }
 
     ShelfFile shelf(shelf_path);
-    
+
     // open the shelf file
     ret = shelf.Open(O_RDWR);
     if (ret != NO_ERROR)
@@ -449,10 +515,9 @@ ErrorCode MemoryManager::Impl_::MapPointer(GlobalPtr ptr, size_t size,
     return ret;
 
 }
-    
 
 ErrorCode MemoryManager::Impl_::UnmapPointer(GlobalPtr ptr, void *mapped_addr, size_t size)
-{ 
+{
     assert(is_ready_ == true);
     Offset offset = ptr.GetOffset();
     int page_size = getpagesize();
@@ -561,10 +626,22 @@ GlobalPtr MemoryManager::Impl_::LocalToGlobal(void *addr)
     
 // thread-safe Singleton pattern with C++11
 // see http://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/
+std::atomic<MemoryManager*> MemoryManager::instance_;
+std::mutex MemoryManager::mutex_;
 MemoryManager *MemoryManager::GetInstance()
 {
-    static MemoryManager instance;
-    return &instance;
+    MemoryManager *tmp = instance_.load(std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_acquire);
+    if (tmp == nullptr) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        tmp = instance_.load(std::memory_order_relaxed);
+        if (tmp == nullptr) {
+            tmp = new MemoryManager;
+            std::atomic_thread_fence(std::memory_order_release);
+            instance_.store(tmp, std::memory_order_relaxed);
+        }
+    }
+    return tmp;
 }
 
 MemoryManager::MemoryManager()

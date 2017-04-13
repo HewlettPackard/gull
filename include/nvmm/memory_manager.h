@@ -26,6 +26,8 @@
 #define _NVMM_MEMORY_MANAGER_H_
 
 #include <memory>
+#include <atomic>
+#include <mutex>
 
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h" // for PoolId
@@ -134,7 +136,9 @@ public:
     Region *FindRegion(PoolId id);
     
 private:
-
+    static std::atomic<MemoryManager*> instance_;
+    static std::mutex mutex_;
+    
     MemoryManager();
     ~MemoryManager();
     

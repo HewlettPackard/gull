@@ -22,15 +22,10 @@
  *
  */
 
-#ifndef _NVMM_LIBPMEM_H_
-#define _NVMM_LIBPMEM_H_
-
-#include <libpmem.h>
+#include "nvmm/nvmm_libpmem.h"
 
 namespace nvmm {
 #ifdef PMEM_INVALIDATE_NOOP
-void pmem_invalidate(void *addr, size_t len);
+void pmem_invalidate(void *addr, size_t len){}
 #endif
 } // namespace nvmm
-
-#endif

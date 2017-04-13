@@ -1,46 +1,31 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(nvmm)
 
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "Release")
-endif()
+#
+# default system include and link directories
+#
+link_directories(/usr/lib)
+include_directories(/usr/include)
+link_directories(/usr/local/lib)
+include_directories(/usr/local/include)
+
 
 #
 # build type: Release (default) or Debug
 #
 message(STATUS "====================")
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
 if(CMAKE_BUILD_TYPE MATCHES Debug)
-  message(STATUS "Build type: Debug")    
+  message(STATUS "Build type: Debug")
 elseif(CMAKE_BUILD_TYPE MATCHES Release)
   message(STATUS "Build type: Release")
 else()
   message(STATUS "Invalid build type: ${CMAKE_BUILD_TYPE}")
   message(STATUS "Default to : Release")
-  set(CMAKE_BUILD_TYPE "Release")    
+  set(CMAKE_BUILD_TYPE "Release")
 endif()
-message(STATUS "====================")
-
-#
-# common gcc flags
-#
-set(CMAKE_CXX_FLAGS "-std=c++11") 
-set(CMAKE_CXX_FLAGS 
-  "${CMAKE_CXX_FLAGS} -Wall -W -Wextra -Wredundant-decls -Wunused -Wunused-macros -Wno-unused-parameter -Wcast-qual -Wcast-align -Wwrite-strings -Wmissing-field-initializers -Wendif-labels -Winit-self -Wlogical-op -Wpacked -Wstack-protector -Wformat=2 -Wswitch-enum -Wstrict-overflow=5 -Wpointer-arith -Wnormalized=nfc -Wno-long-long -Wswitch-default -Wconversion -Wunreachable-code")  
-
-# Flags that are currently not used: -Wshadow -Wpadded 
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-invalid-offsetof ") # to suppress warnings about offsetof
-
-#
-# gcc flags for release build
-#
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS}")
-
-#
-# gcc flags for debug build
-#
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -DDEBUG -Og")
-
-
 #
 # determine endianness at compile time
 #
@@ -57,12 +42,12 @@ endif(${result})
 #
 # determine tmpfs/lfs location
 #
-if(LFS) # FAM
+if(FAME) # FAME
+  add_definitions(-DFAME)
   set(TMPFS_PATH "/lfs")
-  add_definitions(-DLFS)
-  message(STATUS "WARNING: LFS enabled")
-  message(STATUS "lfs location: ${TMPFS_PATH}")
-else() # SHM
+  message(STATUS "LFS enabled")
+  message(STATUS "Lfs location: ${TMPFS_PATH}")
+else() # NUMA
   set(TMPFS_PATH "/dev/shm")
   message(STATUS "tmpfs location: ${TMPFS_PATH}")
 endif()
@@ -70,7 +55,7 @@ endif()
 #
 # determine shelf base dir. Used to store files backing the shelves
 #
-if(LFS)
+if(FAME)
   set(SHELF_BASE_DIR "${TMPFS_PATH}")
 else()
   set(SHELF_BASE_DIR "${TMPFS_PATH}/$ENV{USER}")
@@ -84,31 +69,49 @@ message(STATUS "Shelf base dir: ${SHELF_BASE_DIR}")
 #
 option(ZONE "heap implementation" ON)
 if(NOT ZONE)
-  message(STATUS "WARNING: hierarchical heap")
+  message(STATUS "Heap type: hierarchical")
 else()
   set(ZONE ON)
-  message(STATUS "WARNING: zone heap")
+  message(STATUS "Heap type: zone")
   add_definitions(-DZONE)
-endif()  
+endif()
 
 #
-# default system include and link directories 
+# looking for pmem_invalidate()
 #
-link_directories(/usr/lib)
-include_directories(/usr/include)
-link_directories(/usr/local/lib)
-include_directories(/usr/local/include)
+find_library(NVML_PATH libpmem.so)
+execute_process (
+  COMMAND bash -c "readelf -a ${NVML_PATH} | grep pmem_invalidate"
+  OUTPUT_VARIABLE result
+  )
+if (result STREQUAL "")
+  add_definitions(-DPMEM_INVALIDATE_NOOP)
+  message(STATUS "libpmem: pmem_invalidate() is noop")
+else()
+  message(STATUS "libpmem: pmem_invalidate() is supported")
+endif()
+
+message(STATUS "====================")
 
 #
-# include and link directories for libfam-atomic and libpmem
+# common gcc flags
 #
-set(FAMATOMIC_LIB_PATH "fam-atomic path" "/home/$ENV{USER}/lib/libfam-atomic")
-link_directories(${FAMATOMIC_LIB_PATH}/lib)
-include_directories(${FAMATOMIC_LIB_PATH}/include)
+set(CMAKE_CXX_FLAGS "-std=c++11")
+set(CMAKE_CXX_FLAGS
+  "${CMAKE_CXX_FLAGS} -Wall -W -Wextra -Wredundant-decls -Wunused -Wunused-macros -Wno-unused-parameter -Wcast-qual -Wcast-align -Wwrite-strings -Wmissing-field-initializers -Wendif-labels -Winit-self -Wlogical-op -Wpacked -Wstack-protector -Wformat=2 -Wswitch-enum -Wstrict-overflow=5 -Wpointer-arith -Wnormalized=nfc -Wno-long-long -Wswitch-default -Wconversion -Wunreachable-code")  
 
-set(PMEM_LIB_PATH "libpmem path" "/home/$ENV{USER}/lib/nvml")
-link_directories(${PMEM_LIB_PATH}/lib)
-include_directories(${PMEM_LIB_PATH}/include)
+# Flags that are currently not used: -Wshadow -Wpadded
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-invalid-offsetof ") # to suppress warnings about offsetof
+
+#
+# gcc flags for release build
+#
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS}")
+
+#
+# gcc flags for debug build
+#
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -DDEBUG -Og")
 
 #
 # add libpmem and lib_fam_atomic
@@ -119,8 +122,6 @@ set(ARCH_LIBS pmem fam_atomic)
 # enable GTest
 #
 enable_testing()
-#find_package(GTest REQUIRED)
-#include_directories(${GTEST_INCLUDE_DIR})
 
 #
 # enable boost
@@ -137,7 +138,6 @@ add_definitions(-DBOOST_LOG_DYN_LINK)
 include_directories(${PROJECT_SOURCE_DIR}/include) # public headers (include)
 include_directories(${PROJECT_SOURCE_DIR}/src) # private headers (src)
 include_directories(${PROJECT_SOURCE_DIR}/test) # test headers (test)
-#add_definitions(${ARCH_DEFS})
 
 #
 # third-party libraries
@@ -157,14 +157,20 @@ add_subdirectory(src)
 #
 
 # create base shelf dir
-add_custom_target(
+if(FAME) # FAME
+  add_custom_target(
+  nvmm_shelf_base_dir
+  COMMAND ${CMAKE_COMMAND} -E echo ${SHELF_BASE_DIR}
+  COMMENT show shelf base dir for nvmm
+)
+else() # NUMA
+  add_custom_target(
   nvmm_shelf_base_dir
   COMMAND ${CMAKE_COMMAND} -E make_directory ${SHELF_BASE_DIR}
   COMMENT create shelf base dir for nvmm
 )
+endif()
 
 add_subdirectory(test)
 add_subdirectory(demo)
 add_subdirectory(example)
-
-

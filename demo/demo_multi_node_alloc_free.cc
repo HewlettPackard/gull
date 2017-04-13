@@ -45,15 +45,37 @@
 #include "shelf_usage/freelists.h"
 #include "shelf_mgmt/shelf_file.h"
 
+/*
+  There are two processes (process A and B) running on two nodes. They are using the same heap (1GB)
+  to allocate and free memory (512MB). Because the heap reserves a small amount of heap space to
+  store its own metadata, only one allocation of 512MB can succeed.
+
+  Here are the steps for the demo:
+  - Process A allocates a 512MB chunk and succeeds
+  - Process A sends the address of the chunk to Process B
+  - Process A keeps trying to allocate another 512MB chunk and keeps failing
+  - Process B receives the address from Process A
+  - Process B frees the chunk
+  - Process A finally succeeds in allocating a 512MB chunk
+
+  To run the demo:
+  - Setup FAME with at least two nodes
+  - Log into one node:
+      ./demo_multi_node_alloc_free cleanup
+      ./demo_multi_node_alloc_free init
+      ./demo_multi_node_alloc_free runA
+  - Log into the other node:
+      ./demo_multi_node_alloc_free runB
+ */
+
+
 using namespace nvmm;
 
 PoolId const heap_pool_id = 1; // the pool id of the DistHeap
-size_t const heap_size = 1024*1024*1024LLU;   // 1024MB
+size_t const heap_size = 1*1024*1024*1024LLU;   // 1GB
+size_t const alloc_unit = 512*1024*1024LLU; // 512MB
+
 size_t const comm_size = 128*1024*1024LLU;   // 128MB
-
-int const count = 1000; // loop count (alloc/free)
-size_t alloc_unit = 128*1024; // 128KB, allocation unit
-
 
 int Init()
 {
@@ -62,13 +84,13 @@ int Init()
 
     // comm
     ShelfFile *shelf = NULL;
-    void* address = NULL;    
+    void* address = NULL;
     FreeLists *comm = NULL;
 
     // heap
-    MemoryManager *mm = NULL;    
+    MemoryManager *mm = NULL;
     Heap *heap = NULL;
-    
+
     // check if SHELF_BASE_DIR exists
     std::cout << "Init: Checking if lfs exists..." << std::endl;
     boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
@@ -80,7 +102,7 @@ int Init()
 
     // create a root shelf for MemoryManager if it does not exist
     std::cout << "Init: Creating the root shelf if it does not exist..." << std::endl;
-    std::string root_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_RePO_ROOT";
+    std::string root_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_ROOT";
     RootShelf root_shelf(root_shelf_file);
     if(root_shelf.Exist() == false)
     {
@@ -101,11 +123,11 @@ int Init()
         if (ret!=NO_ERROR)
             exit(1);
     }
-        
+
     // create a shelf for communication among processes
     // use the FreeLists
     std::cout << "Init: Creating the communication shelf..." << std::endl;
-    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_RePO_COMM";    
+    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
     shelf = new ShelfFile(comm_shelf_file);
     if (shelf->Exist()==true)
     {
@@ -122,7 +144,7 @@ int Init()
     if (ret!=NO_ERROR)
         exit(1);
     fam_registered = true;
-        
+
     comm = new FreeLists(address, comm_size);
     ret = comm->Create(list_count);
     if (ret!=NO_ERROR)
@@ -136,13 +158,13 @@ int Init()
         shelf->Unmap(address, comm_size);
         shelf->Close();
     }
-        
+
     if (shelf!=NULL)
         delete shelf;
 
     if (heap!=NULL)
         delete heap;
-    
+
     if (ret==NO_ERROR)
         return 0;
     else
@@ -153,31 +175,29 @@ int Cleanup()
 {
     // init boost::log
     nvmm::init_log(nvmm::fatal, "mm.log");
-    
     // remove previous files in SHELF_BASE_DIR
-    std::cout << "Cleanup: Removing all RePO files in " << SHELF_BASE_DIR << std::endl;
-    std::string cmd = std::string("exec rm -f ") + SHELF_BASE_DIR + "/" + SHELF_USER + "* > nul";
+    std::cout << "Cleanup: Removing all NVMM files in " << SHELF_BASE_DIR << std::endl;
+    std::string cmd = std::string("exec rm -f ") + SHELF_BASE_DIR + "/" + SHELF_USER + "* > /dev/null";
     //std::cout << cmd << std::endl;
     return system(cmd.c_str());
 }
 
-int Run()
+int RunA()
 {
     ErrorCode ret = NO_ERROR;
     bool fam_registered = false;
 
     ShelfFile *shelf = NULL;
-    void* address = NULL;    
+    void* address = NULL;
     FreeLists *comm = NULL;
-    MemoryManager *mm = NULL;    
+    MemoryManager *mm = NULL;
     Heap *heap = NULL;
 
     GlobalPtr ptr;
     ShelfId my_shelf_id;
-    
+
     // open the comm
-    //std::cout << "Worker: opening communication channel..." << std::endl;
-    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_RePO_COMM";    
+    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
     shelf = new ShelfFile(comm_shelf_file);
     ret = shelf->Open(O_RDWR);
     if (ret!=NO_ERROR)
@@ -191,8 +211,7 @@ int Run()
     ret = comm->Open();
     if (ret!=NO_ERROR)
         exit(1);
- 
-    //std::cout << "Worker: opening heap..." << std::endl;   
+
     // open the heap
     mm = MemoryManager::GetInstance();
     ret = mm->FindHeap(heap_pool_id, &heap);
@@ -203,44 +222,38 @@ int Run()
     if (ret!=NO_ERROR)
         exit(1);
 
-    std::cout << "Worker: alloc/free start..." << std::endl;       
-    ptr = heap->Alloc(alloc_unit);
-    if (ptr.IsValid() == false)
+    // trying to allocate 512MB
+    std::cout << "Process A: Opened heap (" << heap_size/1024/1024 << " MB)" << std::endl;
+    int count = 2;
+    int i=0;
+    do
     {
-        std::cout << "Alloc failed" << std::endl;
-    }
-    my_shelf_id = ptr.GetShelfId();
-    std::cout << "I owned heap " << my_shelf_id << std::endl;
-    heap->Free(ptr);
-    sleep(2);
-    for (int i=1; i<count; i++)
-    {
-        if (comm->GetPointer(0, ptr) == NO_ERROR)
-        {
-            heap->Free(ptr);
-            if (ptr.GetShelfId() != my_shelf_id)
-                std::cout << "Remote Free " << ptr << std::endl;            
-        }
+        std::cout << "Process A: Allocating " << alloc_unit/1024/1024 << " MB " << std::endl;
         ptr = heap->Alloc(alloc_unit);
         if (ptr.IsValid() == false)
         {
-            std::cout << "Alloc failed" << std::endl;
+            std::cout << "Process A: Allocation failed" << std::endl;
+            usleep(500000);
         }
         else
         {
-            //std::cout << "Alloc  " << ptr << std::endl;            
-            ret = comm->PutPointer(0, ptr);
-            if (ret != NO_ERROR)
-                exit(1);
+            std::cout << "Process A: Allocation suceeded; ptr " << ptr << std::endl;
+            if (i==0)
+            {
+                std::cout << "Process A: Sending pointer " << ptr << " to Process B" << std::endl;
+                ret = comm->PutPointer(0, ptr);
+                (ret == NO_ERROR);
+            }
+            i++;
         }
-        usleep(5000);
     }
-    std::cout << "Worker: alloc/free end..." << std::endl;       
+    while(i<count);
 
+    // close the heap
     ret = heap->Close();
     if (ret!=NO_ERROR)
         exit(1);
-    
+
     if (comm!=NULL)
         delete comm;
 
@@ -249,13 +262,90 @@ int Run()
         shelf->Unmap(address, shelf->Size());
         shelf->Close();
     }
-        
+
     if (shelf!=NULL)
         delete shelf;
 
     if (heap!=NULL)
         delete heap;
-    
+
+    if (ret==NO_ERROR)
+        return 0;
+    else
+        return 1;
+}
+
+int RunB()
+{
+    ErrorCode ret = NO_ERROR;
+    bool fam_registered = false;
+
+    ShelfFile *shelf = NULL;
+    void* address = NULL;
+    FreeLists *comm = NULL;
+    MemoryManager *mm = NULL;
+    Heap *heap = NULL;
+
+    GlobalPtr ptr;
+    ShelfId my_shelf_id;
+
+    // open the comm
+    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
+    shelf = new ShelfFile(comm_shelf_file);
+    ret = shelf->Open(O_RDWR);
+    if (ret!=NO_ERROR)
+        exit(1);
+    ret = shelf->Map(NULL, shelf->Size(), PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address);
+    if (ret!=NO_ERROR)
+        exit(1);
+    fam_registered = true;
+
+    comm = new FreeLists(address, shelf->Size());
+    ret = comm->Open();
+    if (ret!=NO_ERROR)
+        exit(1);
+
+    // open the heap
+    mm = MemoryManager::GetInstance();
+    ret = mm->FindHeap(heap_pool_id, &heap);
+    if (ret!=NO_ERROR || heap == NULL)
+        exit(1);
+
+    ret = heap->Open();
+    if (ret!=NO_ERROR)
+        exit(1);
+
+    // Remote free
+    std::cout << "Process B: Opened heap (" << heap_size/1024/1024 << " MB)" << std::endl;
+    while (comm->GetPointer(0, ptr) != NO_ERROR)
+    {
+        usleep(5000);
+    }
+    sleep(2);
+    std::cout << "Process B: Received ptr " << ptr << " from Process A" << std::endl;
+    std::cout << "Process B: Freed ptr " << ptr << std::endl;
+    heap->Free(ptr);
+
+    // close the heap
+    ret = heap->Close();
+    if (ret!=NO_ERROR)
+        exit(1);
+
+    if (comm!=NULL)
+        delete comm;
+
+    if (fam_registered == true)
+    {
+        shelf->Unmap(address, shelf->Size());
+        shelf->Close();
+    }
+
+    if (shelf!=NULL)
+        delete shelf;
+
+    if (heap!=NULL)
+        delete heap;
+
     if (ret==NO_ERROR)
         return 0;
     else
@@ -266,13 +356,13 @@ int main(int argc, char **argv)
 {
     if (argc!=2)
     {
-        std::cout << "Usage: ./" << argv[0] << " init/cleanup/run" << std::endl;
+        std::cout << "Usage: ./" << argv[0] << " init/cleanup/runA/runB" << std::endl;
         exit(1);
     }
 
     // init boost::log
-    nvmm::init_log(nvmm::fatal, "");   
-    
+    nvmm::init_log(nvmm::fatal, "mm.log");
+
     std::string cmd(argv[1]);
     if (cmd == "init")
     {
@@ -282,9 +372,13 @@ int main(int argc, char **argv)
     {
         return Cleanup();
     }
-    else if (cmd == "run")
+    else if (cmd == "runA")
     {
-        return Run();
-    }           
+        return RunA();
+    }
+    else if (cmd == "runB")
+    {
+        return RunB();
+    }
 }
 

@@ -57,20 +57,20 @@ public:
     void*    OffsetToPtr(Offset p);
     // TODO
     //Offset PtrToOffset (void*    p);
-    
+
     Zone(const Zone&)            = delete;
     Zone& operator=(const Zone&) = delete;
 
 
 private:
-    char *shelf_location_ptr; 
+    char *shelf_location_ptr;
 
     // shortcut for from_Offset; does not work well on Zone*:
     //   need (*fba)[ptr] for that case
     void* operator[](Offset p) { return from_Offset(p); }
-    
+
     // converting to and from local-address-space pointers (Offset is NOT encoded with size)
-    void*    from_Offset(Offset p); 
+    void*    from_Offset(Offset p);
     Offset to_Offset  (void*    p);
 
     bool grow();
@@ -83,6 +83,10 @@ private:
     void grow_crash_recovery();
     void merge_crash_recovery();
     void detect_lost_chunks();
+    void swap_freelist(struct Zone_Header *zoneheader, uint64_t level);
+    void create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level);
+    void do_merge(struct Zone_Header *zoneheader, uint64_t level);
+    void finish_merge(struct Zone_Header *zoneheader, uint64_t level);
 };
 
 

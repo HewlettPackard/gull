@@ -31,21 +31,24 @@
 
 namespace nvmm {
 
+/*
+  A shelf that is used to "bootstrap" the memory manager
+  It must be created before any memory manager instance is created
+*/
 class RootShelf
 {
 public:
-    RootShelf() = delete; // no default    
+    RootShelf() = delete; // no default
     RootShelf(std::string pathname);
     ~RootShelf();
 
     ErrorCode Create();
     ErrorCode Destroy();
-    ErrorCode Open();        
+    ErrorCode Open();
     ErrorCode Close();
     bool Exist();
     bool IsOpen();
     void *Addr();
-
 
 private:
     static uint64_t const kMagicNum = 766874353; // root shelf
@@ -56,5 +59,4 @@ private:
 };
 
 } // namespace nvmm
-        
 #endif

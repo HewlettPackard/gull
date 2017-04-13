@@ -59,13 +59,16 @@ void init_log(SeverityLevel level);
 
 void init_log(SeverityLevel level, std::string file_name);
 
-    
+#ifdef DEBUG
 #define LOG(severity) \
     BOOST_LOG_SEV(logger, severity) << "(" << __FILE__ << ":" << __LINE__ << ") "
-             
 
 #define TRACE() \
     BOOST_LOG_SEV(logger, trace) << "(" << __FILE__ << ":" << __LINE__ << ") " << __PRETTY_FUNCTION__
+#else
+#define LOG(severity) if(0)std::cerr
+#define TRACE() {}
+#endif
 
 } // namespace nvmm
 

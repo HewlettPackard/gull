@@ -45,7 +45,7 @@
 
 namespace nvmm {
 
-// TODO: clean up redundant code    
+// TODO: clean up redundant code
 RootShelf::RootShelf(std::string pathname)
     : path_{pathname}, fd_{-1}, addr_{nullptr}
 {
@@ -75,7 +75,7 @@ void *RootShelf::Addr()
 {
     return (char*)addr_+kCacheLineSize;
 }
-    
+
 ErrorCode RootShelf::Create()
 {
     TRACE();
@@ -87,7 +87,7 @@ ErrorCode RootShelf::Create()
     {
         return SHELF_FILE_OPENED;
     }
-    
+
     int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR|S_IWUSR);
     if (fd == -1)
     {
@@ -107,19 +107,19 @@ ErrorCode RootShelf::Create()
         return SHELF_FILE_CREATE_FAILED;
     }
 
-    //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr;    
+    //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr;
     ret = fam_atomic_register_region(addr, kShelfSize, fd, 0);
     if (ret == -1)
     {
         LOG(fatal) << "RootShelf: Failed to register fam atomic region " << path_;
         return SHELF_FILE_CREATE_FAILED;
-    }        
+    }
 
     // leave space for the magic number
     char *cur = (char*)addr;
     cur+=kCacheLineSize;
-    
-    // every pool will have a fam spinlock in this root shelf file
+
+    // each pool will have a fam spinlock in this root shelf file
     // for multi-process/multi-node
     nvmm_fam_spinlock* array = (nvmm_fam_spinlock*)cur;
     for(int i=0; i<ShelfId::kMaxPoolCount; i++)
@@ -127,12 +127,17 @@ ErrorCode RootShelf::Create()
         array[i].init();
     }
 
+    // there is also an array of cacheline-sized entires, e.g., to store pool type
+    size_t size = ShelfId::kMaxPoolCount*kCacheLineSize;
+    cur+=size;
+    memset(cur, 0, size);
+
     // finally set the magic number
     fam_atomic_u64_write((uint64_t*)addr, kMagicNum);
-    
-    //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr;    
+
+    //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr;
     fam_atomic_unregister_region(addr, kShelfSize);
-        
+
     ret = munmap(addr, kShelfSize);
     if (ret == -1)
     {
@@ -162,7 +167,7 @@ ErrorCode RootShelf::Destroy()
     {
         return SHELF_FILE_OPENED;
     }
-    
+
     boost::filesystem::path shelf_path = boost::filesystem::path(path_.c_str());
 
     // remove() returns false if the path did not exist in the first place, otherwise true.
@@ -210,7 +215,7 @@ ErrorCode RootShelf::Open()
         return SHELF_FILE_OPEN_FAILED;
     }
 
-    //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr_;    
+    //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr_;
     int ret = fam_atomic_register_region(addr_, (uint64_t)kShelfSize, fd_, 0);
     if (ret == -1)
     {
@@ -236,9 +241,9 @@ ErrorCode RootShelf::Close()
         return SHELF_FILE_CLOSED;
     }
 
-    //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr_;    
+    //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr_;
     fam_atomic_unregister_region(addr_, kShelfSize);
-            
+
     int ret = munmap(addr_, kShelfSize);
     if (ret == -1)
     {

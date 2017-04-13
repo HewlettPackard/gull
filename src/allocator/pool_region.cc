@@ -43,13 +43,13 @@
 #include "allocator/pool_region.h"
 
 namespace nvmm {
-    
+
 PoolRegion::PoolRegion(PoolId pool_id)
     : pool_id_{pool_id}, pool_{pool_id},
       size_{0}, region_file_{NULL}, is_open_{false}
 {
 }
-    
+
 PoolRegion::~PoolRegion()
 {
     if(IsOpen() == true)
@@ -106,7 +106,7 @@ ErrorCode PoolRegion::Create(size_t size)
             return REGION_CREATE_FAILED;
         }
         assert(shelf_idx == kShelfIdx);
-        
+
         ret = pool_.Close(false);
         if (ret != NO_ERROR)
         {
@@ -120,7 +120,7 @@ ErrorCode PoolRegion::Create(size_t size)
 ErrorCode PoolRegion::Destroy()
 {
     TRACE();
-    assert(IsOpen() == false);    
+    assert(IsOpen() == false);
     if (pool_.Exist() == false)
     {
         return POOL_NOT_FOUND;
@@ -139,7 +139,7 @@ ErrorCode PoolRegion::Destroy()
         // if(ret != NO_ERROR)
         // {
         //     LOG(fatal) << "Destroy: Found inconsistency in Region " << (uint64_t)pool_id_;
-        // }        
+        // }
         for (ShelfIndex shelf_idx = 0; shelf_idx < pool_.Size(); shelf_idx++)
         {
             if (pool_.CheckShelf(shelf_idx) == true)
@@ -225,7 +225,7 @@ ErrorCode PoolRegion::Close()
     LOG(trace) << "Close Region " << pool_id_;
     assert(IsOpen() == true);
     ErrorCode ret = NO_ERROR;
-    
+
     // close the region_file
     ret = region_file_->Close();
     if (ret != NO_ERROR)
@@ -234,14 +234,14 @@ ErrorCode PoolRegion::Close()
     }
     delete region_file_;
     region_file_ = NULL;
-    
+
     // // perform recovery
     // ret = pool_.Recover();
     // if(ret != NO_ERROR)
     // {
     //     LOG(fatal) << "Close: Found inconsistency in Region " << (uint64_t)pool_id_;
     // }
-    
+
     // close the pool
     ret = pool_.Close(false);
     if (ret != NO_ERROR)
@@ -252,7 +252,7 @@ ErrorCode PoolRegion::Close()
     size_ = 0;
     is_open_ = false;
 
-    assert(ret == NO_ERROR);    
+    assert(ret == NO_ERROR);
     return ret;
 }
 

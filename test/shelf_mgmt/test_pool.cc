@@ -195,7 +195,7 @@ TEST(Pool, ShelfUsage)
 
 
 // TODO: disable this test if we run it in VM
-#ifndef LFS
+#ifndef FAME
 // single-process multi-threaded test
 // slow
 struct thread_argument{

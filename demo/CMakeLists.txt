@@ -6,7 +6,4 @@ function (add_nvmm_demo file_name)
   target_link_libraries(${file_name} ${ARCH_LIBS})
 endfunction()
 
-add_nvmm_demo(demo_multi_node_nvmm)
 add_nvmm_demo(demo_multi_node_alloc_free)
-add_nvmm_demo(demo_multi_node_remote_free)
-add_nvmm_demo(demo_multi_node_crash)

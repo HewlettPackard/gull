@@ -58,11 +58,10 @@ void InitTest(SeverityLevel level, bool to_console)
     }
 
     // remove previous files in SHELF_BASE_DIR
-    std::string cmd = std::string("exec rm -f ") + SHELF_BASE_DIR + "/" + SHELF_USER + "* > nul";
+    std::string cmd = std::string("exec rm -f ") + SHELF_BASE_DIR + "/" + SHELF_USER + "* > /dev/null";
     system(cmd.c_str());
-    
 
-#ifdef LFS        
+#ifdef FAME
     // check if SHELF_BASE_DIR exists
     boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
     if (boost::filesystem::exists(shelf_base_path) == false)
@@ -86,4 +85,3 @@ void InitTest(SeverityLevel level, bool to_console)
 }
 
 } // namespace nvmm
-

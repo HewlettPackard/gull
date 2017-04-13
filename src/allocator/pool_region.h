@@ -37,17 +37,17 @@
 namespace nvmm{
 
 class ShelfRegion;
-    
+
 class PoolRegion : public Region
 {
-public:    
+public:
     PoolRegion() = delete;
     PoolRegion(PoolId pool_id);
-    ~PoolRegion();    
+    ~PoolRegion();
     ErrorCode Create(size_t size);
     ErrorCode Destroy();
     bool Exist();
-    
+
     ErrorCode Open(int flags);
     ErrorCode Close();
     size_t Size()
@@ -58,19 +58,19 @@ public:
     {
         return is_open_;
     }
-    
+
     ErrorCode Map(void *addr_hint, size_t length, int prot, int flags, loff_t offset, void **mapped_addr);
     ErrorCode Unmap(void *mapped_addr, size_t length);
 
 private:
     static int const kShelfIdx = 0; // this is the only shelf in the pool
 
-    PoolId pool_id_;    
+    PoolId pool_id_;
     Pool pool_;
     size_t size_;
     ShelfRegion *region_file_;
     bool is_open_;
 };
-    
+
 } // namespace nvmm
 #endif
