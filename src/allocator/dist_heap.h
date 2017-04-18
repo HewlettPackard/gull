@@ -143,7 +143,7 @@ private:
     // for the background cleaner thread
     std::thread cleaner_thread_;
     std::mutex cleaner_mutex_;
-    bool cleaner_running_;    
+    bool cleaner_running_;
     bool cleaner_stop_;
 
     // TODO: gather freespace stats

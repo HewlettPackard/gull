@@ -59,7 +59,7 @@ ShelfHeap::~ShelfHeap()
     }
 }
 
-ErrorCode ShelfHeap::Create(size_t zone_size)
+ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size)
 {
     assert(IsOpen() == false);
     assert(shelf_.Exist() == true);
@@ -84,7 +84,7 @@ ErrorCode ShelfHeap::Create(size_t zone_size)
     // create zone layout
     // TODO: this will fail if the shelf file already exists; if the file exists and it is
     // already inited, it will fail
-    Zone *zone = new Zone(addr_, zone_size/4, 64, zone_size);
+    Zone *zone = new Zone(addr_, zone_size/4, 64, zone_size, helper, helper_size);
     delete zone;
     
     ret= UnmapCloseShelf();
@@ -144,12 +144,12 @@ ErrorCode ShelfHeap::Recover()
     return NO_ERROR;
 }
     
-ErrorCode ShelfHeap::Open()
+ErrorCode ShelfHeap::Open(void *helper, size_t helper_size)
 {
     assert(IsOpen() == false);
 
     ErrorCode ret = NO_ERROR;
-                
+
     ret = OpenMapShelf(true);
     if (ret != NO_ERROR)
     {
@@ -157,10 +157,10 @@ ErrorCode ShelfHeap::Open()
     }
 
     // TODO: verify zone header
+    helper_ = helper;
+    helper_size_ = helper_size;
+    zone_ = new Zone(addr_, shelf_.Size(), helper_, helper_size_);
 
-    zone_ = new Zone(addr_, shelf_.Size());
-    
-    
     is_open_ = true;
     return ret;
 }
@@ -185,7 +185,13 @@ size_t ShelfHeap::Size()
     assert(IsOpen() == true);
     return shelf_.Size();
 }
-    
+
+size_t ShelfHeap::MinAllocSize()
+{
+    assert(IsOpen() == true);
+    return zone_->min_obj_size();
+}
+
 Offset ShelfHeap::Alloc(size_t size)
 {
     assert(IsOpen() == true);
@@ -201,42 +207,27 @@ void ShelfHeap::Free(Offset offset)
     zone_->free(offset);
     LOG(trace) << "ShelfHeap::Free " << offset;
 }
-    
+
 bool ShelfHeap::IsValidOffset(Offset offset)
 {
     assert(IsOpen() == true);
     return zone_->IsValidOffset(offset);
-    //return true;
 }
-    
-// bool ShelfHeap::IsValidPtr(void *addr)
-// {
-//     assert(IsOpen() == true);
-//     if (addr < zone_)
-//     {
-//         return false;
-//     }
-//     else
-//     {
-//         Offset offset = (Offset)((char*)addr - (char*)zone_);
-//         return IsValidOffset(offset);
-//     }
-// }
-    
+
 void *ShelfHeap::OffsetToPtr(Offset offset) const
 {
     assert(IsOpen() == true);
     assert(zone_->IsValidOffset(offset) == true);
     return zone_->OffsetToPtr(offset);
-}    
+}
 
 Offset ShelfHeap::PtrToOffset(void *addr)
 {
-    // assert(IsOpen() == true);
-    // assert(addr>zone_);
-    // Offset offset = (char*)addr - (char*)zone_;
-    // assert(zone_->IsValidOffset(offset) == true);
-    return 0;
+    assert(IsOpen() == true);
+    assert(addr>zone_);
+    Offset offset = (char*)addr - (char*)zone_;
+    assert(zone_->IsValidOffset(offset) == true);
+    return offset;
 }
 
 ErrorCode ShelfHeap::OpenMapShelf(bool use_shelf_manager)
@@ -246,7 +237,7 @@ ErrorCode ShelfHeap::OpenMapShelf(bool use_shelf_manager)
     {
         return SHELF_FILE_NOT_FOUND;
     }
-    
+
     ErrorCode ret = NO_ERROR;
 
     // open the shelf

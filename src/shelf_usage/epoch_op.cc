@@ -22,30 +22,26 @@
  *
  */
 
-#ifndef _NVMM_HEAP_H_
-#define _NVMM_HEAP_H_
-
-#include "nvmm/error_code.h"
-#include "nvmm/global_ptr.h"
 #include "nvmm/epoch_manager.h"
 
-namespace nvmm{
 
-class Heap
+namespace nvmm {
+
+
+EpochOp::EpochOp(EpochManager* em)
+    : em_(em)
 {
-public:
-    virtual ~Heap(){};
+    em_->enter_critical();
+}
 
-    virtual ErrorCode Open() = 0;
-    virtual ErrorCode Close() = 0;
-    virtual bool IsOpen() = 0;
+EpochOp::~EpochOp() {
+    em_->exit_critical();
+}
 
-    virtual GlobalPtr Alloc (size_t size) = 0;
-    virtual void Free (GlobalPtr global_ptr) = 0;
 
-    virtual GlobalPtr Alloc (EpochOp &op, size_t size){return (GlobalPtr)0;};
-    virtual void Free (EpochOp &op, GlobalPtr global_ptr){};
-};
+EpochCounter EpochOp::reported_epoch() {
+    return em_->reported_epoch();
+}
 
-} // namespace nvmm
-#endif
+
+} // end namespace nvmm

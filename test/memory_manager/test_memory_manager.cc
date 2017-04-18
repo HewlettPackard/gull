@@ -30,6 +30,7 @@
 #include "nvmm/nvmm_fam_atomic.h"
 
 #include "nvmm/memory_manager.h"
+#include "nvmm/epoch_manager.h"
 #include "shelf_mgmt/pool.h"
 #include "test_common/test.h"
 #include "shelf_usage/freelists.h"
@@ -210,9 +211,7 @@ TEST(MemoryManager, HeapWithGlobalLocalPtr)
         ptr[i] = heap->Alloc(sizeof(int));
         EXPECT_TRUE(ptr[i].IsValid());
         int *int_ptr = (int*)mm->GlobalToLocal(ptr[i]);
-#ifndef ZONE
         EXPECT_EQ(ptr[i], mm->LocalToGlobal(int_ptr));
-#endif        
         EXPECT_TRUE(int_ptr != NULL);
         *int_ptr = i;            
     }
@@ -226,9 +225,7 @@ TEST(MemoryManager, HeapWithGlobalLocalPtr)
     for (int i=0; i<10; i++)
     {
         int *int_ptr = (int*)mm->GlobalToLocal(ptr[i]);
-#ifndef ZONE
         EXPECT_EQ(ptr[i], mm->LocalToGlobal(int_ptr));
-#endif        
         EXPECT_TRUE(int_ptr != NULL);
         EXPECT_EQ(i, *int_ptr);        
         heap->Free(ptr[i]);
@@ -407,6 +404,11 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
     FreeLists comm(address, length);
     EXPECT_EQ(NO_ERROR, comm.Open());    
 
+
+    // =======================================================================
+    // reset epoch manager after fork()
+    EpochManager *em = EpochManager::GetInstance();
+    em->ResetAfterFork();
     
     // =======================================================================    
     // get the existing heap
@@ -425,9 +427,7 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
         if (comm.GetPointer(0, ptr) == NO_ERROR)
         {
             uint64_t *uint_ptr = (uint64_t*)mm->GlobalToLocal(ptr);
-#ifndef ZONE            
             EXPECT_EQ(ptr, mm->LocalToGlobal(uint_ptr));
-#endif            
             EXPECT_TRUE(uint_ptr != NULL);
             EXPECT_EQ(ptr.ToUINT64(), *uint_ptr);
             heap->Free(ptr);
@@ -441,9 +441,7 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
         else
         {
             uint64_t *uint_ptr = (uint64_t*)mm->GlobalToLocal(ptr);
-#ifndef ZONE            
             EXPECT_EQ(ptr, mm->LocalToGlobal(uint_ptr));
-#endif            
             EXPECT_TRUE(uint_ptr != NULL);
             *uint_ptr = ptr.ToUINT64();
             EXPECT_EQ(NO_ERROR, comm.PutPointer(0, ptr));
@@ -487,6 +485,13 @@ TEST(MemoryManager, MultiProcessHeap)
     size_t size = 128*1024*1024LLU;   
     EXPECT_EQ(NO_ERROR, mm->CreateHeap(heap_pool_id, size));
 
+
+    // =======================================================================
+    // reset epoch manager before fork()
+    EpochManager *em = EpochManager::GetInstance();
+    em->ResetBeforeFork();
+
+    
     pid_t pid[process_count];
 
     for (int i=0; i< process_count; i++)
@@ -511,16 +516,21 @@ TEST(MemoryManager, MultiProcessHeap)
         int status;
         waitpid(pid[i], &status, 0);
     }
-    
+
+    // =======================================================================
     // destroy the heap
     EXPECT_EQ(NO_ERROR, mm->DestroyHeap(heap_pool_id));
-    // =======================================================================
 
+    // =======================================================================
+    // reset epoch manager after fork() for the main process
+    em->ResetAfterFork();
+
+    // =======================================================================
     // destroy the shelf for communication
     EXPECT_EQ(NO_ERROR, comm.Destroy());
     EXPECT_EQ(NO_ERROR, shelf.Unmap(address, length));
-    EXPECT_EQ(NO_ERROR, shelf.Close());        
-    EXPECT_EQ(NO_ERROR, shelf.Destroy());        
+    EXPECT_EQ(NO_ERROR, shelf.Close());
+    EXPECT_EQ(NO_ERROR, shelf.Destroy());
 }
 
 // TODO: there seems to be a bug in libfam-atomic that may cause this test case to fail

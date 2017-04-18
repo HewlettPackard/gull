@@ -71,6 +71,12 @@ public:
     {
     }
 
+
+    operator uint64_t() const
+    {
+	return (uint64_t)shelf_id_;
+    }
+
     inline bool IsValid() const
     {
         return

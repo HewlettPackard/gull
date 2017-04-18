@@ -22,29 +22,40 @@
  *
  */
 
-#ifndef _NVMM_HEAP_H_
-#define _NVMM_HEAP_H_
+#ifndef _NVMM_ROOT_SHELF_H_
+#define _NVMM_ROOT_SHELF_H_
+
+#include <string>
 
 #include "nvmm/error_code.h"
-#include "nvmm/global_ptr.h"
-#include "nvmm/epoch_manager.h"
 
-namespace nvmm{
+namespace nvmm {
 
-class Heap
+/*
+  A shelf that is used to "bootstrap" the memory manager
+  It must be created before any memory manager instance is created
+*/
+class RootShelf
 {
 public:
-    virtual ~Heap(){};
+    RootShelf() = delete; // no default
+    RootShelf(std::string pathname);
+    ~RootShelf();
 
-    virtual ErrorCode Open() = 0;
-    virtual ErrorCode Close() = 0;
-    virtual bool IsOpen() = 0;
+    ErrorCode Create();
+    ErrorCode Destroy();
+    ErrorCode Open();
+    ErrorCode Close();
+    bool Exist();
+    bool IsOpen();
+    void *Addr();
 
-    virtual GlobalPtr Alloc (size_t size) = 0;
-    virtual void Free (GlobalPtr global_ptr) = 0;
-
-    virtual GlobalPtr Alloc (EpochOp &op, size_t size){return (GlobalPtr)0;};
-    virtual void Free (EpochOp &op, GlobalPtr global_ptr){};
+private:
+    static uint64_t const kMagicNum = 766874353; // root shelf
+    static size_t const kShelfSize = 128*1024*1024; // 128MB
+    std::string path_;
+    int fd_;
+    void *addr_;
 };
 
 } // namespace nvmm

@@ -21,7 +21,9 @@ shared NVM transparently.
 
 ## Master Source
 
-https://github.com/HewlettPackard/gull
+https://github.hpe.com/labs/nvmm (internal)
+
+https://github.com/HewlettPackard/gull (external)
 
 ## Maturity
 
@@ -62,12 +64,18 @@ NVMM runs on both NUMA and FAME systems.
   $ sudo make install
   ```
 
-- Setup [FAME](https://github.com/HewlettPackard/mdc-toolkit/blob/master/guide-FAME.md) if you want to try NVMM on top of FAM
+- Setup [FAME](https://github.hpe.com/labs/mdc-toolkit/blob/master/guide-FAME.md) if you want to try NVMM on top of FAM
 
 ## Build & Test
 
 1. Download the source code:
 
+ Internal:
+ ```
+ $ git clone https://github.hpe.com/labs/nvmm.git
+ ```
+
+ External:
  ```
  $ git clone https://github.com/HewlettPackard/gull.git
  ```
@@ -119,7 +127,7 @@ demo/demo_multi_node_alloc_free.cc for more details.
 
 Below are the steps to run the demo:
 
-1. Setup [FAME](https://github.com/HewlettPackard/mdc-toolkit/blob/master/guide-FAME.md) with two nodes (e.g., node01 and node02)
+1. Setup [FAME](https://github.hpe.com/labs/mdc-toolkit/blob/master/guide-FAME.md) with two nodes (e.g., node01 and node02)
 
 2. Install NVMM on both nodes at directory $NVMM, with FAME support
 

@@ -22,30 +22,43 @@
  *
  */
 
-#ifndef _NVMM_HEAP_H_
-#define _NVMM_HEAP_H_
+/*
+  modified from the stack implementation from Mark
+ */
 
-#include "nvmm/error_code.h"
+#ifndef _NVMM_ZONE_ENTRY_STACK_H_
+#define _NVMM_ZONE_ENTRY_STACK_H_
+
 #include "nvmm/global_ptr.h"
-#include "nvmm/epoch_manager.h"
+#include "shelf_usage/smart_shelf.h"
 
-namespace nvmm{
+namespace nvmm {
 
-class Heap
-{
-public:
-    virtual ~Heap(){};
+/**
+ ** A very simple lock-free stack of blocks
+ **
+ ** Must be allocated in FAM.
+ **
+ ** The blocks pushed on the stack must be cache line aligned, at
+ ** least a cache line long, and not accessed by anyone else while on
+ ** the stack.  They must also all belong to the same Shelf, which must
+ ** be passed to pop and push.
+ **/
+struct ZoneEntryStack {
+    // we access the following two fields atomically via 128-bit CAS:
+    uint64_t head __attribute__ ((aligned (16)));
+    uint64_t aba_counter;  // incremented each time head is written
 
-    virtual ErrorCode Open() = 0;
-    virtual ErrorCode Close() = 0;
-    virtual bool IsOpen() = 0;
+    // returns 0 if stack is empty
+    uint64_t pop (void *addr);
+    void push(void *addr, uint64_t idx);
 
-    virtual GlobalPtr Alloc (size_t size) = 0;
-    virtual void Free (GlobalPtr global_ptr) = 0;
-
-    virtual GlobalPtr Alloc (EpochOp &op, size_t size){return (GlobalPtr)0;};
-    virtual void Free (EpochOp &op, GlobalPtr global_ptr){};
+private:
+    ZoneEntryStack(const ZoneEntryStack&);              // disable copying
+    ZoneEntryStack& operator=(const ZoneEntryStack&);   // disable assignment
 };
 
-} // namespace nvmm
+
+}
+
 #endif

@@ -39,9 +39,10 @@
 #include "nvmm/nvmm_fam_atomic.h"
 #include "nvmm/nvmm_libpmem.h"
 #include "common/common.h"
-#include "shelf_usage/stack.h"
+#include "shelf_usage/zone_entry_stack.h"
 
 #include "shelf_usage/zone.h"
+#include "shelf_usage/zone_entry.h"
 
 struct timespec start, end;
 
@@ -89,12 +90,12 @@ inline uint64_t next_power_of_two(uint64_t n)
 #define GB (MB * KB)
 //#define TB (GB * KB)
 #define MAX_ZONE_SIZE (128 * GB)
-#define MIN_OBJECT_SIZE 64
-#define MAX_LEVEL_PER_ZONE power_of_two(MAX_ZONE_SIZE / MIN_OBJECT_SIZE)
+#define MIN_OBJ_SIZE 64
+#define MAX_LEVEL_PER_ZONE power_of_two(MAX_ZONE_SIZE / MIN_OBJ_SIZE)
 //TODO: Add zoneheader size ????
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
-#define OFFSET_BITS 48
+
 // TODO: Possibly an enum instead for merge states.
 #define MERGE_DEFAULT 0
 #define MERGE_SWAP_COMPLETED 1
@@ -115,60 +116,40 @@ inline uint64_t find_size_from_level(uint64_t level, size_t min_obj_size)
         return 1UL << (level + power_of_two(min_obj_size));
 }
 
-// API to append the level details to the Offset
-inline Offset append_level_to_Offset(Offset ptr, uint64_t level)
-{
-	return ((level << OFFSET_BITS) | ptr);
-}
-
-// API to remove level details from the Offset.
-inline Offset remove_level_from_Offset(Offset ptr)
-{
-	return (~(255UL << OFFSET_BITS) & ptr);
-}
-
-// API to get level details from the Offset.
-inline uint64_t get_level_from_Offset(Offset ptr)
-{
-	return (ptr >> OFFSET_BITS);
-}
-
 /*
  * Zone Header
  */
 struct Zone_Header {
-        // The max level of free list allowed in a Zone.
-        uint64_t max_zone_level;
-        // The max size of the Zone.
-        size_t max_zone_size;
-        // The multiple factor is used to find the allocation size.
-        uint64_t multiple_factor;
-        // The mimimum size of the object supported in the Zone
-        size_t min_object_size; 
-        // Current level of the zone. 
-        uint64_t current_zone_level;
-        // Starting address of the bitmap.
-        Offset bitmap_start_addr;
-	// Epoch stored to track the grow and prevent multiple processes from growing simultaneously.
-	uint64_t grow_in_progress;
-	// Epoch stored to track the merge and prevent multiple processes from merge simultaneously.
-	uint64_t merge_in_progress;
-	// Track the status of merge so we can recover from crash and restart merge.
-	uint64_t merge_status;
-	// Starting address used for merge bitmap
-	Offset merge_bitmap_start_addr;
-	// Current level where merge is happening. When there is no merge going on, its value is -1
-	int64_t current_merge_level; 
-	// Stack use to 
-	Stack safe_copy;
-	// Stack used to track the post merge freelist level.
-	Stack post_merge_level;
-	// Stack used to track the post merge freelist for level+!.
-	Stack post_merge_next_level;
-	// Array of stack to track the freelist for various freelists.
-	// Note: Never ever directly use the size of Zone_Header directly as it will never include
-	// the below array of Stack.
-	Stack free_list[0];
+    // The max level of free list allowed in a Zone.
+    uint64_t max_zone_level;
+    // The max size of the Zone.
+    size_t max_zone_size;
+    // The multiple factor is used to find the allocation size.
+    uint64_t multiple_factor;
+    // The mimimum size of the object supported in the Zone
+    size_t min_obj_size;
+    // Current level of the zone.
+    uint64_t current_zone_level;
+    // Epoch stored to track the grow and prevent multiple processes from growing simultaneously.
+    uint64_t grow_in_progress;
+    // Epoch stored to track the merge and prevent multiple processes from merge simultaneously.
+    uint64_t merge_in_progress;
+    // Track the status of merge so we can recover from crash and restart merge.
+    uint64_t merge_status;
+    // Starting address used for merge bitmap
+    Offset merge_bitmap_start_addr;
+    // Current level where merge is happening. When there is no merge going on, its value is -1
+    int64_t current_merge_level;
+    // A copy of the freelist we are going to merge
+    ZoneEntryStack safe_copy;
+    // Stack used to track the post merge freelist level.
+    ZoneEntryStack post_merge_level;
+    // Stack used to track the post merge freelist for level+!.
+    ZoneEntryStack post_merge_next_level;
+    // Array of stack to track the freelist for various freelists.
+    // Note: Never ever directly use the size of Zone_Header directly as it will never include
+    // the below array of Stack.
+    ZoneEntryStack free_list[0];
 };
 
 /***************************************************************************/
@@ -191,13 +172,23 @@ do anything. This is only called when the init is done. If this is called withou
 an initialization of the Zone Header, one can notice unexpected behavior and can
 lead to corruption.
 */
-Zone::Zone(void *addr, 
-	   size_t max_pool_size) :
-    shelf_location_ptr((char*)addr)
+Zone::Zone(void *addr,
+	   size_t max_pool_size, void *helper, size_t helper_size) :
+    shelf_location_ptr((char*)addr),
+    header_ptr((char*)helper),
+    header_size(helper_size)
 {
+    //print_freelist();
 	return;
 }
 
+Zone::~Zone()
+{
+    //print_freelist();
+	return;
+}
+
+    
 /*
 Constructor for the Zone object. We here pass the mmap'ed memory,
 initial pool size, minimum object size and max pool size to initialize
@@ -205,13 +196,17 @@ the underlying Shelf Object. As the application/caller has already done
 the mmap, we just have to set the underlying shelf object fields
 appropriately and then initialize the Zone Header.
 */
-Zone::Zone(void *addr, 
-	   size_t initial_pool_size, 
+Zone::Zone(void *addr,
+	   size_t initial_pool_size,
 	   size_t min_obj_size,
-	   size_t max_pool_size):
-    shelf_location_ptr((char*)addr)
+	   size_t max_pool_size,
+           void *helper,
+           size_t helper_size):
+    shelf_location_ptr((char*)addr),
+    header_ptr((char*)helper),
+    header_size(helper_size)
 {
-	uint64_t max_level_per_zone = 0;
+        uint64_t max_level_per_zone = 0;
 	size_t bitmap_size = 0;
 	size_t merge_bitmap_size = 0;
 	int64_t old_value;
@@ -223,8 +218,8 @@ Zone::Zone(void *addr,
 	size_t chunk_size, zoneheader_chunk_size;
 	std::ostringstream message;
 
-	if (min_obj_size < MIN_OBJECT_SIZE) {
-		message << "min size less than " << MIN_OBJECT_SIZE << std::endl;
+	if (min_obj_size < MIN_OBJ_SIZE) {
+		message << "min size less than " << MIN_OBJ_SIZE << std::endl;
 		throw std::runtime_error(message.str());
 	}
 
@@ -232,22 +227,20 @@ Zone::Zone(void *addr,
 		message << "min size is not a power of two " << std::endl;
 		throw std::runtime_error(message.str());
 	}
-		
 
-	old_value = cas64((int64_t *)&zoneheader->min_object_size, 0, MAX(MIN_OBJECT_SIZE, min_obj_size));
+	old_value = cas64((int64_t *)&zoneheader->min_obj_size, 0, MAX(MIN_OBJ_SIZE, min_obj_size));
 	if (old_value != 0) {
 		message << "Zone header init failed" << std::endl;
 		throw std::runtime_error(message.str());
 	}
 
 	// TODO: User driven multiple factor???
-	
 	old_value = cas64((int64_t *)&zoneheader->multiple_factor, 0, 1);
 	if (old_value != 0) {
 		message << "Zone header init failed" << std::endl;
 		throw std::runtime_error(message.str());
 	}
-	
+
 	if (max_pool_size > MAX_ZONE_SIZE) {
 		message << "max_pool_size more than " << MAX_ZONE_SIZE << std::endl;
 		throw std::runtime_error(message.str());
@@ -263,8 +256,12 @@ Zone::Zone(void *addr,
 		message << "Zone header init failed" << std::endl;
 		throw std::runtime_error(message.str());
 	}
-	
-	max_level_per_zone = find_level_from_size(zoneheader->max_zone_size, zoneheader->min_object_size);
+
+        // zero out the header region
+        // TODO: is this necessary?
+        pmem_memset_persist(header_ptr, 0, zoneheader->max_zone_size/zoneheader->min_obj_size*sizeof(zone_entry));
+
+        max_level_per_zone = find_level_from_size(zoneheader->max_zone_size, zoneheader->min_obj_size);
 	old_value = cas64((int64_t *)&zoneheader->max_zone_level, 0, MIN(max_level_per_zone, MAX_LEVEL_PER_ZONE));
 	if (old_value != 0) {
 		message << "Zone header init failed" << std::endl;
@@ -272,28 +269,33 @@ Zone::Zone(void *addr,
 	}
 
         // zoneheader_size is rounded up to the closest power of two (i.e., a valid object/chunk size)
-	zoneheader_size = next_power_of_two(sizeof(Zone_Header) + (sizeof(Stack) * (zoneheader->max_zone_level + 1)));
+	zoneheader_size = next_power_of_two(sizeof(Zone_Header) + (sizeof(ZoneEntryStack) * (zoneheader->max_zone_level + 1)));
 
+        // for delayed-free
 	// Min value should be 8 bytes.
-	bitmap_size = ((1UL << (zoneheader->max_zone_level + 1)) / BYTE);
+	bitmap_size = ((1UL << zoneheader->max_zone_level) / BYTE);
 	merge_bitmap_size = ((1UL << zoneheader->max_zone_level) / BYTE);
 	//printf("Zone Header size = %ld, Bitmap Size = %ld, Merge Bitmap Size = %ld\n", zoneheader_size, bitmap_size, merge_bitmap_size);
 
 	assert(bitmap_size >= 8 && merge_bitmap_size >= 8);
+        if (header_size < bitmap_size) {
+		message << "insufficient header area, requiring " << (bitmap_size) << std::endl;
+		throw std::runtime_error(message.str());
+        }
 
-	if (initial_pool_size <= (bitmap_size + merge_bitmap_size)) {
-		message << "initial_pool_size is less than minimum zone size of " << (bitmap_size + merge_bitmap_size) << std::endl;
+	if (initial_pool_size <= (merge_bitmap_size)) {
+		message << "initial_pool_size is less than minimum zone size of " << (merge_bitmap_size) << std::endl;
 		throw std::runtime_error(message.str());
 	} else if (!(is_power_of_two(initial_pool_size))) {
 		message << "initial_pool_size is not a power of two " << std::endl;
 		throw std::runtime_error(message.str());
-	} else if (initial_pool_size <= zoneheader->min_object_size) {
+	} else if (initial_pool_size <= zoneheader->min_obj_size) {
 		message << "initial_pool_size is less than or equal to the minimum object size" << std::endl;
 		throw std::runtime_error(message.str());
 	}
 
 	old_value = cas64((int64_t *)&zoneheader->current_zone_level, 0,
-			 find_level_from_size(initial_pool_size, zoneheader->min_object_size));
+			 find_level_from_size(initial_pool_size, zoneheader->min_obj_size));
 	if (old_value != 0) {
 		message << "Zone header init failed" << std::endl;
 		throw std::runtime_error(message.str());
@@ -302,8 +304,8 @@ Zone::Zone(void *addr,
 	// TODO: Zoneheader size > bitmap_size/ merge_bitmap_size
 	// i.e the bitmap size is too small compared to zoneheader size.
 
-	// Zoneheader + Bitmap fits in a single min sized chunk.
-	if ((zoneheader_size + bitmap_size + merge_bitmap_size) <= zoneheader->min_object_size) {
+	// Zoneheader + merge bitmap fits in a single min sized chunk.
+	if ((zoneheader_size + merge_bitmap_size) <= zoneheader->min_obj_size) {
 		advance_ptr = shelf_location_ptr + zoneheader_size;
 		old_value = cas64((int64_t *)&zoneheader->merge_bitmap_start_addr, 0,
 				 to_Offset(advance_ptr));
@@ -312,37 +314,29 @@ Zone::Zone(void *addr,
 			throw std::runtime_error(message.str());
 		}
 
-		advance_ptr = (char*)advance_ptr + merge_bitmap_size;
-		old_value = cas64((int64_t *)&zoneheader->bitmap_start_addr, 0,
-				 to_Offset(advance_ptr));
-		if (old_value != 0) {
-			message << "Zone header init failed" << std::endl;
-			throw std::runtime_error(message.str());
-		}
-
 		set_bitmap_bit(zoneheader,
-			       find_level_from_size(zoneheader->min_object_size, zoneheader->min_object_size),
+			       find_level_from_size(zoneheader->min_obj_size, zoneheader->min_obj_size),
 			       to_Offset(shelf_location_ptr));
 
-		chunk_size = zoneheader->min_object_size;
+		chunk_size = zoneheader->min_obj_size;
 		advance_ptr = shelf_location_ptr + chunk_size;
 		while (chunk_size < initial_pool_size) {
-			freelist_level = find_level_from_size(chunk_size, zoneheader->min_object_size);
+			freelist_level = find_level_from_size(chunk_size, zoneheader->min_obj_size);
 			ptr = to_Offset(advance_ptr);
-			zoneheader->free_list[freelist_level].push(shelf_location_ptr, ptr);
+			zoneheader->free_list[freelist_level].push(header_ptr, ptr/zoneheader->min_obj_size);
 			advance_ptr = (char*)advance_ptr + chunk_size;
 			chunk_size = chunk_size << 1;
 		}
 	} else {
 		// Zoneheader and Bitmap fits in different chunks.
                 // zoneheader_size was already rounded up to a valid chunk_size
-		chunk_size = MAX(zoneheader_size, zoneheader->min_object_size);
+		chunk_size = MAX(zoneheader_size, zoneheader->min_obj_size);
                 // if the next chunk cannot hold the merge bitmap, it goes to the freelist
 		advance_ptr = shelf_location_ptr + chunk_size;
 		while (chunk_size < merge_bitmap_size) {
-			freelist_level = find_level_from_size(chunk_size, zoneheader->min_object_size);
+			freelist_level = find_level_from_size(chunk_size, zoneheader->min_obj_size);
 			ptr = to_Offset(advance_ptr);
-			zoneheader->free_list[freelist_level].push(shelf_location_ptr, ptr);
+			zoneheader->free_list[freelist_level].push(header_ptr, ptr/zoneheader->min_obj_size);
                         // now advance_ptr is the starting address of the next valid chunk
 			advance_ptr = (char*)advance_ptr + chunk_size;
 			chunk_size = chunk_size << 1;
@@ -355,44 +349,20 @@ Zone::Zone(void *addr,
 			throw std::runtime_error(message.str());
 		}
 
-                // to cover both the zone header and the merge bitmap
-		chunk_size = chunk_size << 1;
-                // if the next chunk cannot hold the bitmap, it goes to the freelist
-		advance_ptr = shelf_location_ptr + chunk_size;
-		while (chunk_size < bitmap_size) {
-			freelist_level = find_level_from_size(chunk_size, zoneheader->min_object_size);
-			ptr = to_Offset(advance_ptr);
-			zoneheader->free_list[freelist_level].push(shelf_location_ptr, ptr);
-                        // now advance_ptr is the starting address of the next valid chunk
-			advance_ptr = (char*)advance_ptr + chunk_size;
-			chunk_size = chunk_size << 1;
-		}
-
-		old_value = cas64((int64_t *)&zoneheader->bitmap_start_addr, 0,
-				 to_Offset(advance_ptr));
-		if (old_value != 0) {
-			message << "Zone header init failed" << std::endl;
-			throw std::runtime_error(message.str());
-		}
-
 		// Set bit for the zoneheader chunk
-		zoneheader_chunk_size = MAX(zoneheader_size, zoneheader->min_object_size);
+		zoneheader_chunk_size = MAX(zoneheader_size, zoneheader->min_obj_size);
 		set_bitmap_bit(zoneheader,
-			find_level_from_size(zoneheader_chunk_size, zoneheader->min_object_size),
+			find_level_from_size(zoneheader_chunk_size, zoneheader->min_obj_size),
 			to_Offset(shelf_location_ptr));
 
 		// Set bit for the merge bitmap chunk
 		// set_bitmap_bit(zoneheader,
-		// 	find_level_from_size(merge_bitmap_size, zoneheader->min_object_size),
+		// 	find_level_from_size(merge_bitmap_size, zoneheader->min_obj_size),
 		// 	to_Offset(shelf_location_ptr));
 		set_bitmap_bit(zoneheader,
-			find_level_from_size(merge_bitmap_size, zoneheader->min_object_size),
+			find_level_from_size(merge_bitmap_size, zoneheader->min_obj_size),
                         zoneheader->merge_bitmap_start_addr);
 
-		// Set bit for the bitmap chunk
-		set_bitmap_bit(zoneheader,
-			find_level_from_size(bitmap_size, zoneheader->min_object_size),
-			zoneheader->bitmap_start_addr);
 
                 // Finally, populate the rest of the freelists
 		// Cannot populate the freelist before setting the bitmap else alloc will not be able to
@@ -400,14 +370,23 @@ Zone::Zone(void *addr,
 		chunk_size = chunk_size << 1;
 		advance_ptr = shelf_location_ptr + chunk_size;
 		while (chunk_size < initial_pool_size) {
-			freelist_level = find_level_from_size(chunk_size, zoneheader->min_object_size);
+			freelist_level = find_level_from_size(chunk_size, zoneheader->min_obj_size);
 			ptr = to_Offset(advance_ptr);
-			zoneheader->free_list[freelist_level].push(shelf_location_ptr, ptr);
+			zoneheader->free_list[freelist_level].push(header_ptr, ptr/zoneheader->min_obj_size);
 			advance_ptr = (char*)advance_ptr + chunk_size;
 			chunk_size = chunk_size << 1;
 		}
 
 	}
+
+        //print_freelist();
+        //print_bitmap();
+}
+
+uint64_t Zone::min_obj_size()
+{
+    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+    return zoneheader->min_obj_size;
 }
 
 /***************************************************************************/
@@ -438,12 +417,12 @@ Offset Zone::alloc(size_t size)
 	bool grow_in_progress = false;
 
 	// TODO: size > current_zone_size
-	min_obj_size = zoneheader->min_object_size;
-	//min_obj_size = fam_atomic_u64_read((uint64_t *)&zoneheader->min_object_size);
+	min_obj_size = zoneheader->min_obj_size;
+	//min_obj_size = fam_atomic_u64_read((uint64_t *)&zoneheader->min_obj_size);
 	chunk_size = next_power_of_two(MAX(size, min_obj_size));
 	orig_freelist_level = find_level_from_size(chunk_size, min_obj_size);
 //retry:	current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
-retry:	current_zone_level = zoneheader->current_zone_level;
+retry:	current_zone_level = fam_atomic_u64_read(&zoneheader->current_zone_level);
 
 	for (level = orig_freelist_level; level <= current_zone_level; level++)
 	{
@@ -454,20 +433,20 @@ retry:	current_zone_level = zoneheader->current_zone_level;
 		As the counter is not needed for correctness purpose, we can live with
 		stale values.
 		*/
-		Offset result = zoneheader->free_list[level].pop(shelf_location_ptr);
+                Offset result = (zoneheader->free_list[level].pop(header_ptr))*min_obj_size;
 		if (result) {
 			cur_size = find_size_from_level(level, min_obj_size);
 			while (level != orig_freelist_level) {
 				new_chunk_ptr = result + (cur_size >> 1);
                                 // add the second half to the freelist
-				zoneheader->free_list[level-1].push(shelf_location_ptr, new_chunk_ptr);
+				zoneheader->free_list[level-1].push(header_ptr, new_chunk_ptr/min_obj_size);
 				level--;
 				cur_size = cur_size >> 1;
 			}
 			// Zero out the chunk before returning the pointer to the caller.
 			pmem_memset_persist(from_Offset(result), 0, chunk_size);
 			set_bitmap_bit(zoneheader, orig_freelist_level, result);
-			return append_level_to_Offset(result, orig_freelist_level);
+                        return result;
 		}
 	}
 	/* TODO: Should we again check the current_zone_level so that if we a grow that was happening in parallel
@@ -498,7 +477,9 @@ retry:	current_zone_level = zoneheader->current_zone_level;
 		}
 	}
 
-	return -1;
+        //print_bitmap();
+        //set_nextprint_freelist();
+	return 0;
 }
 
 /***************************************************************************/
@@ -510,7 +491,7 @@ retry:	current_zone_level = zoneheader->current_zone_level;
 void Zone::free(Offset block) {
 
     /*
-	1. Find the actual pointer from the Offset received. 
+	1. Find the actual pointer from the Offset received.
 	2. Find the level of the freed object from the Offset received.
 	3. For the corresponding level and the pointer, clear the bit in the bitmap.
 	4. Push the free object pointer now in the freelist.
@@ -518,15 +499,18 @@ void Zone::free(Offset block) {
     if (block == 0)
         return;
 
-    Offset blk = remove_level_from_Offset(block);
-    uint64_t level = get_level_from_Offset(block);
     struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+    // TODO: optimization
+    // read the entry once, and then pass the entry and entry ptr to get_level_from_Offset,
+    // reset_bitmap_bit, and free_list.push
+    uint64_t level = get_level(zoneheader, block);
     // Do we really need to do pmem_persist???
-    //int64_t* b = (int64_t*) from_Offset(blk);
+    //int64_t* b = (int64_t*) from_Offset(block);
     //pmem_persist(b, find_size_from_level);
 
-    reset_bitmap_bit(zoneheader, level, blk);
-    zoneheader->free_list[level].push(shelf_location_ptr, blk);
+    // TODO: to be safe, maybe we should check if the chunk was actually allocated or not
+    reset_bitmap_bit(zoneheader, level, block);
+    zoneheader->free_list[level].push(header_ptr, block/zoneheader->min_obj_size);
 }
 
 bool Zone::grow()
@@ -575,8 +559,8 @@ bool Zone::grow()
 
 		printf("Grow happening from %ld to %ld level\n", current_zone_level, current_zone_level + 1);
 
-		old_zone_level = zoneheader->current_zone_level;
-		chunk_size = find_size_from_level(old_zone_level, zoneheader->min_object_size);
+		old_zone_level = current_zone_level;
+		chunk_size = find_size_from_level(old_zone_level, zoneheader->min_obj_size);
 		// TODO: Can we just do an atomic increase instead ?
 		old_value = cas64((int64_t *)&zoneheader->current_zone_level, old_zone_level, old_zone_level + 1);
 		if (old_value != 0 && old_value != (int64_t)old_zone_level) {
@@ -584,8 +568,9 @@ bool Zone::grow()
 		}
 
 		advance_ptr = shelf_location_ptr + chunk_size;
-		zoneheader->free_list[old_zone_level].push(shelf_location_ptr,
-								 to_Offset(advance_ptr));
+		zoneheader->free_list[old_zone_level].push(header_ptr,
+								 to_Offset(advance_ptr)/zoneheader->min_obj_size);
+
 
                 // UNLOCK
 		old_value = cas64((int64_t *)&zoneheader->grow_in_progress, 1, 0);
@@ -604,6 +589,16 @@ bool Zone::is_grow_in_progress(struct Zone_Header *zoneheader)
 	} else {
 		return false;
 	}
+}
+
+inline uint64_t Zone::get_level(struct Zone_Header *zoneheader, Offset ptr)
+{
+    size_t min_obj_size = zoneheader->min_obj_size;
+    // idx 0 is reserved for empty stack so all actual idxes are shifted right by 1
+    uint64_t idx = ptr/min_obj_size+1;
+    uint64_t *entry_ptr = ((uint64_t*)header_ptr) + idx;
+    zone_entry entry = (zone_entry)fam_atomic_u64_read(entry_ptr);
+    return entry.level();
 }
 
 inline void set_bit(void *address, uint64_t bit_offset)
@@ -644,60 +639,49 @@ inline void reset_bit(void *address, uint64_t bit_offset)
 	}
 }
 
+void Zone::print_bitmap() {
+    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+    for(uint64_t i=1; i<=zoneheader->max_zone_size/zoneheader->min_obj_size; i++) {
+        zone_entry entry = ((zone_entry*)header_ptr)[i];
+        if (entry.is_allocated())
+            printf("%lu) %lu %lu %lu\n", i-1, entry.is_allocated()?1UL:0UL, entry.level(), entry.next());
+    }
+}
+
+void Zone::print_freelist() {
+    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+
+    for (uint64_t i = 0; i <= zoneheader->current_zone_level; i++) {
+        uint64_t idx = (Offset)zoneheader->free_list[i].head;
+        if (idx==0)
+            continue;
+        printf("level %lu, head %lu\n", i, idx-1);
+        while (idx>0) {
+            zone_entry entry = ((zone_entry*)header_ptr)[idx];
+            printf("level %lu, %lu) %lu %lu %lu\n", i, idx-1, entry.is_allocated()?1UL:0UL, entry.level(), entry.next());
+            idx = entry.next();
+        }
+    }
+}
+
 void Zone::modify_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr, bool set)
 {
-	uint64_t max_level = zoneheader->max_zone_level;
-	//uint64_t max_level = fam_atomic_u64_read((uint64_t *)&zoneheader->max_zone_level);
-	uint64_t total_bitmap_bits = (1UL << (max_level + 1));
-	uint64_t bitmap_starting_bits_at_level = (1UL << ((max_level - level) + 1));
-	uint64_t bitmap_start_at_level, bitmap_offset, bit_offset;
-	size_t chunk_size, min_obj_size;
-	Offset bitmap_start;
-	void *modifying_address;
-
-	// Do we really need to do atomic read for min_object_size and bitmap_start.
-	// These are always read-only and wont change ever.
-	bitmap_start = zoneheader->bitmap_start_addr;
-	min_obj_size = zoneheader->min_object_size;
-	//bitmap_start = fam_atomic_u64_read((uint64_t *)&zoneheader->bitmap_start_addr);
-	//min_obj_size = fam_atomic_u64_read(&zoneheader->min_object_size);
-
-	bitmap_start_at_level = bitmap_start + ((total_bitmap_bits - bitmap_starting_bits_at_level) / BYTE);
-	chunk_size = find_size_from_level(level, min_obj_size);
-
-	bitmap_offset = (ptr / chunk_size) / (BYTE);
-	modifying_address = from_Offset(bitmap_start_at_level + bitmap_offset);
-
-	// The last 3 levels are within a single byte. So special care needed to set the proper bits. 
-	if (level >= max_level - 1) {
-		if (level == max_level - 1) {
-			// Second last level starts after 4 bits.
-			bit_offset = ((BYTE - 1) - ((ptr / chunk_size) % BYTE)) - 4;
-		} else if (level == max_level) {
-			// Last level is after 6 bits i.e the 7th bit.
-			bit_offset = ((BYTE - 1) - ((ptr / chunk_size) % BYTE)) - 6;
-		}
-	} else {
-		// Calculate from 0-7 instead of 1-8.
-		// We only deal with the last 8 bits(SB) in the 64 byte word we read.
-		bit_offset = ((BYTE - 1) - ((ptr / chunk_size) % BYTE));
-	}
-
-	if (set) {
-		set_bit(modifying_address, bit_offset);
-	} else {
-		reset_bit(modifying_address, bit_offset);
-	}
+    size_t min_obj_size = zoneheader->min_obj_size;
+    // idx 0 is reserved for empty stack so all actual idxes are shifted right by 1
+    uint64_t idx = ptr/min_obj_size+1;
+    uint64_t *entry_ptr = ((uint64_t*)header_ptr) + idx;
+    zone_entry new_entry(set, level);
+    fam_atomic_u64_write(entry_ptr, (uint64_t)new_entry);
 }
 
 void Zone::set_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr)
 {
-	modify_bitmap_bit(zoneheader, level, ptr, 1);
+	modify_bitmap_bit(zoneheader, level, ptr, true);
 }
 
 void Zone::reset_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr)
 {
-	modify_bitmap_bit(zoneheader, level, ptr, 0);
+	modify_bitmap_bit(zoneheader, level, ptr, false);
 }
 
 void Zone::start_merge()
@@ -797,7 +781,7 @@ void Zone::create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level) {
     void *modifying_address;
 
     Offset merge_bitmap_start = zoneheader->merge_bitmap_start_addr;
-    size_t min_obj_size = zoneheader->min_object_size;
+    size_t min_obj_size = zoneheader->min_obj_size;
     size_t chunk_size = find_size_from_level(level, min_obj_size);
     Offset next_ptr;
     Offset ptr = zoneheader->safe_copy.head;
@@ -812,11 +796,6 @@ void Zone::create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level) {
         }
 
         next_ptr = fam_atomic_u64_read((uint64_t *)from_Offset(ptr));
-
-        /*result = zoneheader->safe_copy.pop(shelf_location_ptr);
-          if (!result) {
-          break;
-          }*/
 
         bitmap_offset = (ptr / chunk_size) / (BYTE);
         bit_offset = ((ptr / chunk_size) % (BYTE));
@@ -841,7 +820,7 @@ void Zone::do_merge(struct Zone_Header *zoneheader, uint64_t level) {
     uint64_t unmerged_chunks = 0, merged_chunks = 0;
     Offset new_chunk_ptr;
     Offset merge_bitmap_start = zoneheader->merge_bitmap_start_addr;
-    size_t min_obj_size = zoneheader->min_object_size;
+    size_t min_obj_size = zoneheader->min_obj_size;
     size_t chunk_size = find_size_from_level(level, min_obj_size);
 
     fam_atomic_u64_write((uint64_t*)&zoneheader->post_merge_level, 0);
@@ -879,7 +858,7 @@ void Zone::do_merge(struct Zone_Header *zoneheader, uint64_t level) {
                 //TODO: Aseert the bitmap and merge bitmap addresses too.
                 assert(new_chunk_ptr != 0); 
                 assert(new_chunk_ptr <= zoneheader->max_zone_size);
-                zoneheader->post_merge_next_level.push(shelf_location_ptr, new_chunk_ptr);
+                zoneheader->post_merge_next_level.push(header_ptr, new_chunk_ptr/min_obj_size);
                 merged_chunks = merged_chunks + 2;
             } else {
                 // The buddies are not present. Hence keep the chunk at the same level.
@@ -898,7 +877,7 @@ void Zone::do_merge(struct Zone_Header *zoneheader, uint64_t level) {
                 // never be a case where new_chunk_ptr is 0.
                 assert(new_chunk_ptr != 0); 
                 assert(new_chunk_ptr <= zoneheader->max_zone_size);
-                zoneheader->post_merge_level.push(shelf_location_ptr, new_chunk_ptr);
+                zoneheader->post_merge_level.push(header_ptr, new_chunk_ptr/min_obj_size);
                 unmerged_chunks = unmerged_chunks + 1;
             }
             shift = shift >> 2;
@@ -917,23 +896,23 @@ void Zone::do_merge(struct Zone_Header *zoneheader, uint64_t level) {
 }
 
 void Zone::finish_merge(struct Zone_Header *zoneheader, uint64_t level) {
-    Offset result;
+    uint64_t result;
 
     // Again merge back the chunks to the freelist.
     for(;;) {
-        result = zoneheader->post_merge_next_level.pop(shelf_location_ptr);
+        result = zoneheader->post_merge_next_level.pop(header_ptr);
         if (!result) {
             break;
         }
-        zoneheader->free_list[level + 1].push(shelf_location_ptr, result);
+        zoneheader->free_list[level + 1].push(header_ptr, result);
     }
 
     for(;;) {
-        result = zoneheader->post_merge_level.pop(shelf_location_ptr);
+        result = zoneheader->post_merge_level.pop(header_ptr);
         if (!result) {
             break;
         }
-        zoneheader->free_list[level].push(shelf_location_ptr, result);
+        zoneheader->free_list[level].push(header_ptr, result);
     }
 
     // zero out the merge bitmap
@@ -1030,15 +1009,13 @@ bool Zone::merge(struct Zone_Header *zoneheader, uint64_t level)
 
 bool Zone::IsValidOffset(Offset p)
 {
-    //return p<zoneheader->max_zone_size; // TODO(y);
     struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
-    Offset ptr = remove_level_from_Offset(p);
-    return ptr>0 && ptr<zoneheader->max_zone_size;
+    return p>0 && p<zoneheader->max_zone_size;
 }
 
 void* Zone::OffsetToPtr(Offset p)
 {
-    return from_Offset(remove_level_from_Offset(p));
+    return from_Offset(p);
 }
 
 void Zone::grow_crash_recovery()
@@ -1066,7 +1043,7 @@ void Zone::grow_crash_recovery()
 
     // TODO: re-acquire the grow lock, so that there is no one else doing grow or grow recovery
     current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
-    zone_size = find_size_from_level(current_zone_level, zoneheader->min_object_size);
+    zone_size = find_size_from_level(current_zone_level, zoneheader->min_obj_size);
 
     for (int64_t level = (int64_t)current_zone_level; level >= 0; level--) {
         // TODO: 128-bit?
@@ -1226,6 +1203,9 @@ void Zone::detect_lost_chunks()
       4. In the end, the merge bitmap should be all 1's.
     */
 
+// TODO: for delayed-free
+/*    
+    
     // 1
     grow_crash_recovery();
     merge_crash_recovery();
@@ -1237,7 +1217,7 @@ void Zone::detect_lost_chunks()
 
     // 3
     Offset bitmap_start = zoneheader->bitmap_start_addr;
-    size_t min_obj_size = zoneheader->min_object_size;
+    size_t min_obj_size = zoneheader->min_obj_size;
     uint64_t max_level = zoneheader->max_zone_level;
     uint64_t total_bitmap_bits = (1UL << (max_level + 1));
     Offset merge_bitmap_start = zoneheader->merge_bitmap_start_addr;
@@ -1295,12 +1275,12 @@ void Zone::detect_lost_chunks()
             bool res2 = check_n_bits(merge_bitmap_ptr+merge_bytepos2, merge_bitpos2, BIT);
             if (res1==false && res2==true) {
                 Offset ptr = (i/BIT) * chunk_size;
-                zoneheader->free_list[level].push(shelf_location_ptr, ptr);
+                zoneheader->free_list[level].push(header_ptr, ptr/min_obj_size);
                 set_n_bits(merge_bitmap_ptr+merge_bytepos1, merge_bitpos1, BIT);
             }
             if (res1==true && res2==false) {
                 Offset ptr = (i/BIT+1) * chunk_size;
-                zoneheader->free_list[level].push(shelf_location_ptr, ptr);
+                zoneheader->free_list[level].push(header_ptr, ptr/min_obj_size);
                 set_n_bits(merge_bitmap_ptr+merge_bytepos2, merge_bitpos2, BIT);
             }
         }
@@ -1314,6 +1294,7 @@ void Zone::detect_lost_chunks()
             printf("WARNING: GC failed!\n");
         }
     }
+*/
 }
 
 }

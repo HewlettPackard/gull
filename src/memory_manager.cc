@@ -24,13 +24,12 @@
 
 #include <memory>
 
+#include <stdlib.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <fcntl.h> // for O_RDWR
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 #include <unistd.h> // for getpagesize()
-#include <mutex>
-#include <atomic>
 #include <string>
 #include <boost/filesystem.hpp>
 
@@ -43,11 +42,12 @@
 #include "nvmm/log.h"
 #include "nvmm/nvmm_fam_atomic.h"
 #include "nvmm/memory_manager.h"
-#include "nvmm/root_shelf.h"
+
+#include "common/root_shelf.h"
 #include "shelf_mgmt/shelf_manager.h"
 #include "allocator/pool_region.h"
 #ifdef ZONE
-#include "allocator/zone_heap.h"
+#include "allocator/epoch_zone_heap.h"
 #else
 #include "allocator/dist_heap.h"
 #endif
@@ -55,7 +55,7 @@
 namespace nvmm {
 
 /*
- * Internal implemenattion of MemoryManager
+ * Internal implementation of MemoryManager
  */
 class MemoryManager::Impl_
 {
@@ -139,11 +139,6 @@ std::string const MemoryManager::Impl_::kRootShelfPath = std::string(SHELF_BASE_
 
 ErrorCode MemoryManager::Impl_::Init()
 {
-#ifdef FAME
-    // TODO
-    // when running NVMM on FAME, we must create SHELF_BASE_DIR and the root shelf file during
-    // bootstrap (see test/test_common/test.cc)
-    // Check if SHELF_BASE_DIR exists
     boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
     if (boost::filesystem::exists(shelf_base_path) == false)
     {
@@ -156,37 +151,13 @@ ErrorCode MemoryManager::Impl_::Init()
         LOG(fatal) << "NVMM: Root shelf does not exist?" << kRootShelfPath;
         exit(1);
     }
-#else
-    // create SHELF_BASE_DIR if it does not exist
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
-    if (boost::filesystem::exists(shelf_base_path) == false)
+
+    if (root_shelf_.Open() != NO_ERROR)
     {
-        bool ret = boost::filesystem::create_directory(shelf_base_path);
-        if (ret == false)
-        {
-            LOG(fatal) << "NVMM: Failed to create SHELF_BASE_DIR " << SHELF_BASE_DIR;
-            exit(1);
-        }
+        LOG(fatal) << "NVMM: Root shelf open failed..." << kRootShelfPath;
+        exit(1);
     }
 
-    // create a root shelf for MemoryManager if it does not exist
-    if(root_shelf_.Exist() == false)
-    {
-        ErrorCode ret = root_shelf_.Create();
-        if (ret!=NO_ERROR && ret != SHELF_FILE_FOUND)
-        {
-            LOG(fatal) << "NVMM: Failed to create the root shelf file " << kRootShelfPath;
-            exit(1);
-        }
-    }
-#endif
-    int count = 0;
-    while(root_shelf_.Open() != NO_ERROR && count < 100)
-    {
-        LOG(fatal) << "NVMM: Root shelf open failed.. retrying..." << kRootShelfPath;
-        usleep(5000);
-        count++;
-    }
     locks_ = (nvmm_fam_spinlock*)root_shelf_.Addr();
     types_ = (PoolTypeEntry*)((char*)root_shelf_.Addr() + ShelfId::kMaxPoolCount*sizeof(nvmm_fam_spinlock));
     is_ready_ = true;
@@ -323,7 +294,7 @@ ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size)
         return ID_FOUND;
     }
 #ifdef ZONE
-    ZoneHeap heap(id);
+    EpochZoneHeap heap(id);
 #else
     DistHeap heap(id);
 #endif
@@ -360,7 +331,7 @@ ErrorCode MemoryManager::Impl_::DestroyHeap(PoolId id)
         return ID_NOT_FOUND;
     }
 #ifdef ZONE
-    ZoneHeap heap(id);
+    EpochZoneHeap heap(id);
 #else
     //PoolHeap heap(id);
     DistHeap heap(id);
@@ -398,7 +369,7 @@ ErrorCode MemoryManager::Impl_::FindHeap(PoolId id, Heap **heap)
     }
     // TODO: use smart poitner or unique pointer?
 #ifdef ZONE
-    ZoneHeap *heap_ = new ZoneHeap(id);
+    EpochZoneHeap *heap_ = new EpochZoneHeap(id);
 #else
     DistHeap *heap_ = new DistHeap(id);
 #endif
@@ -595,10 +566,6 @@ void *MemoryManager::Impl_::GlobalToLocal(GlobalPtr ptr)
 // TODO(zone): how to make this work for zone ptr?
 GlobalPtr MemoryManager::Impl_::LocalToGlobal(void *addr)
 {
-#ifdef ZONE
-    LOG(fatal) << "WARNING: LocalToGlobal is currenly not supported for Zone";
-    return GlobalPtr();
-#else    
     void *base = NULL;
     ShelfId shelf_id = ShelfManager::FindShelf(addr, base);
     if (shelf_id.IsValid() == false)
@@ -615,33 +582,51 @@ GlobalPtr MemoryManager::Impl_::LocalToGlobal(void *addr)
                    << " returned ptr " << global_ptr;
         return global_ptr;
     }
-#endif    
 }
 
 
 
 /*
  * Public APIs of MemoryManager
- */       
-    
-// thread-safe Singleton pattern with C++11
-// see http://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/
-std::atomic<MemoryManager*> MemoryManager::instance_;
-std::mutex MemoryManager::mutex_;
-MemoryManager *MemoryManager::GetInstance()
-{
-    MemoryManager *tmp = instance_.load(std::memory_order_relaxed);
-    std::atomic_thread_fence(std::memory_order_acquire);
-    if (tmp == nullptr) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        tmp = instance_.load(std::memory_order_relaxed);
-        if (tmp == nullptr) {
-            tmp = new MemoryManager;
-            std::atomic_thread_fence(std::memory_order_release);
-            instance_.store(tmp, std::memory_order_relaxed);
+ */
+
+void MemoryManager::Start() {
+    // Check if SHELF_BASE_DIR exists
+    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
+    if (boost::filesystem::exists(shelf_base_path) == false)
+    {
+        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << SHELF_BASE_DIR;
+        exit(1);
+    }
+
+    // create a root shelf for MemoryManager if it does not exist
+    RootShelf root_shelf(MemoryManager::Impl_::kRootShelfPath);
+    if(root_shelf.Exist() == false)
+    {
+        ErrorCode ret = root_shelf.Create();
+        if (ret!=NO_ERROR && ret != SHELF_FILE_FOUND)
+        {
+            LOG(fatal) << "NVMM: Failed to create the root shelf file " << MemoryManager::Impl_::kRootShelfPath;
+            exit(1);
         }
     }
-    return tmp;
+}
+
+void MemoryManager::Reset() {
+    std::string cmd = std::string("exec rm -f ") + MemoryManager::Impl_::kRootShelfPath + " > /dev/null";
+    (void)system(cmd.c_str());
+
+    // remove previous files in SHELF_BASE_DIR
+    cmd = std::string("exec rm -f ") + SHELF_BASE_DIR + "/" + SHELF_USER + "_NVMM_Shelf* > /dev/null";
+    (void)system(cmd.c_str());
+}
+
+// thread-safe Singleton pattern with C++11
+// see http://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/
+MemoryManager *MemoryManager::GetInstance()
+{
+    static MemoryManager instance;
+    return &instance;
 }
 
 MemoryManager::MemoryManager()

@@ -22,30 +22,34 @@
  *
  */
 
-#ifndef _NVMM_HEAP_H_
-#define _NVMM_HEAP_H_
+#ifndef _NVMM_HRTIME_H_
+#define _NVMM_HRTIME_H_
 
-#include "nvmm/error_code.h"
-#include "nvmm/global_ptr.h"
-#include "nvmm/epoch_manager.h"
+#include <time.h>
 
-namespace nvmm{
 
-class Heap
-{
-public:
-    virtual ~Heap(){};
+namespace nvmm {
+namespace internal {
 
-    virtual ErrorCode Open() = 0;
-    virtual ErrorCode Close() = 0;
-    virtual bool IsOpen() = 0;
 
-    virtual GlobalPtr Alloc (size_t size) = 0;
-    virtual void Free (GlobalPtr global_ptr) = 0;
+typedef struct timespec HRTime;
 
-    virtual GlobalPtr Alloc (EpochOp &op, size_t size){return (GlobalPtr)0;};
-    virtual void Free (EpochOp &op, GlobalPtr global_ptr){};
-};
+static inline HRTime get_hrtime() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return ts;
+}
 
-} // namespace nvmm
-#endif
+static inline size_t diff_hrtime_ns(const HRTime& start, const HRTime& end) {
+    return (end.tv_sec - start.tv_sec)*1000000000LLU + end.tv_nsec - start.tv_nsec;
+}
+
+static inline size_t diff_hrtime_us(const HRTime& start, const HRTime& end) {
+    return diff_hrtime_ns(start, end) / 1000LLU;
+}
+
+
+} // end namespace internal
+} // end namespace nvmm
+
+#endif // _NVMM_HRTIME_H_

@@ -22,30 +22,43 @@
  *
  */
 
-#ifndef _NVMM_HEAP_H_
-#define _NVMM_HEAP_H_
+#ifndef _NVMM_PARTICIPANT_MANAGER_H_
+#define _NVMM_PARTICIPANT_MANAGER_H_
 
-#include "nvmm/error_code.h"
-#include "nvmm/global_ptr.h"
-#include "nvmm/epoch_manager.h"
+#include <atomic>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <sys/types.h>
+#include <unistd.h>
 
-namespace nvmm{
 
-class Heap
-{
+namespace nvmm {
+
+
+typedef pid_t ParticipantID;
+
+
+/* ParticipantManager manages participant processes.
+   getSelfID: gets the unique id of the calling participant.
+   terminate: kills the target participant.
+*/
+class ParticipantManager {
 public:
-    virtual ~Heap(){};
+    // Gets the unique id of the calling participant
+    static ParticipantID get_self_id(); 
 
-    virtual ErrorCode Open() = 0;
-    virtual ErrorCode Close() = 0;
-    virtual bool IsOpen() = 0;
+    // Checks if a given participant is alive
+    static bool is_alive(ParticipantID pid); 
 
-    virtual GlobalPtr Alloc (size_t size) = 0;
-    virtual void Free (GlobalPtr global_ptr) = 0;
-
-    virtual GlobalPtr Alloc (EpochOp &op, size_t size){return (GlobalPtr)0;};
-    virtual void Free (EpochOp &op, GlobalPtr global_ptr){};
+    // This call terminates the participant whose id is pid.
+    // The pid must be a valid id.
+    // The call is idempotent. If the target pid is already killed, the call acts as nop.
+    static void terminate(ParticipantID pid); 
 };
 
-} // namespace nvmm
-#endif
+
+} // end namespace nvmm
+
+#endif // _NVMM_PARTICIPANT_MANAGER_H_

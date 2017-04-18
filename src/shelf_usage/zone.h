@@ -35,11 +35,11 @@ namespace nvmm {
 class Zone {
 public:
     Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
-			size_t max_pool_size);
+	 size_t max_pool_size, void *helper, size_t helper_size);
 
-    Zone(void *addr, size_t max_pool_size);
+    Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size);
 
-    virtual ~Zone() {}
+    ~Zone();
 
     // returns 0 if no blocks are currently available
     Offset alloc(size_t size);
@@ -58,12 +58,20 @@ public:
     // TODO
     //Offset PtrToOffset (void*    p);
 
+    // for delayed free
+    uint64_t min_obj_size();
+
     Zone(const Zone&)            = delete;
     Zone& operator=(const Zone&) = delete;
 
+    // debugging
+    void print_bitmap();
+    void print_freelist();
 
-private:
+ private:
     char *shelf_location_ptr;
+    char *header_ptr;
+    size_t header_size;
 
     // shortcut for from_Offset; does not work well on Zone*:
     //   need (*fba)[ptr] for that case
@@ -76,6 +84,7 @@ private:
     bool grow();
     bool is_grow_in_progress(struct Zone_Header *zoneheader);
     bool is_merge_in_progress(struct Zone_Header *zoneheader);
+    uint64_t get_level(struct Zone_Header *zoneheader, Offset ptr);
     void modify_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr, bool set);
     void set_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr);
     void reset_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr);

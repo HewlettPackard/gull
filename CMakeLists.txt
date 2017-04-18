@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(nvmm)
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+
 #
 # default system include and link directories
 #
@@ -14,9 +18,6 @@ include_directories(/usr/local/include)
 # build type: Release (default) or Debug
 #
 message(STATUS "====================")
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "Release")
-endif()
 if(CMAKE_BUILD_TYPE MATCHES Debug)
   message(STATUS "Build type: Debug")
 elseif(CMAKE_BUILD_TYPE MATCHES Release)
@@ -111,7 +112,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS}")
 #
 # gcc flags for debug build
 #
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -DDEBUG -Og")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -DDEBUG -Og -g")
 
 #
 # add libpmem and lib_fam_atomic
@@ -157,19 +158,11 @@ add_subdirectory(src)
 #
 
 # create base shelf dir
-if(FAME) # FAME
-  add_custom_target(
-  nvmm_shelf_base_dir
-  COMMAND ${CMAKE_COMMAND} -E echo ${SHELF_BASE_DIR}
-  COMMENT show shelf base dir for nvmm
-)
-else() # NUMA
-  add_custom_target(
+add_custom_target(
   nvmm_shelf_base_dir
   COMMAND ${CMAKE_COMMAND} -E make_directory ${SHELF_BASE_DIR}
   COMMENT create shelf base dir for nvmm
 )
-endif()
 
 add_subdirectory(test)
 add_subdirectory(demo)

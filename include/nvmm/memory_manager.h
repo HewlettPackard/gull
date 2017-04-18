@@ -26,8 +26,6 @@
 #define _NVMM_MEMORY_MANAGER_H_
 
 #include <memory>
-#include <atomic>
-#include <mutex>
 
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h" // for PoolId
@@ -39,15 +37,25 @@
 namespace nvmm{
 
 // TODO: Current limitation:
-// - No type check for an existing pool id (mm does not know if specified pool is a Heap or a Region)
 // - No pool-id management/assignment (clients of mm must agree upon a set of pool ids that each
-// wants to use, e.g., 1 and 2 for item store, 3 for metadata store, etc) 
+// wants to use, e.g., 1 and 2 for item store, 3 for metadata store, etc)
 // - No multi-process support for pool (heap/region) creation and destroy
 class MemoryManager
 {
 public:
-    // there is only one instance of mm in a process
-    // return the instance
+    // Start the memory manager (creating necessary files to bootstrap the memory manager)
+    // this function is NOT thread-safe/process-safe
+    // this function must run once and only once in both single-node and multi-node environments,
+    // before the first call to GetInstance()
+    static void Start();
+
+    // Reset the memory manager (deleting all files)
+    // this function is NOT thread-safe/process-safe
+    // this function can only run when no one is using the memory manager
+    static void Reset();
+
+    // there is only one instance of MemoryManager in a process
+    // return a pointer to the instance
     static MemoryManager *GetInstance();
 
     /*
@@ -66,8 +74,8 @@ public:
     */
     void *GlobalToLocal(GlobalPtr ptr);
     GlobalPtr LocalToGlobal(void *addr);
-    
-    /* 
+
+    /*
        a heap provides Alloc/Free APIs
     */
     // Create a heap with the given id
@@ -75,7 +83,7 @@ public:
     // Return
     // - NO_ERROR: heap was created
     // - ID_FOUND: the given id is in use
-    ErrorCode CreateHeap(PoolId id, size_t shelf_size); 
+    ErrorCode CreateHeap(PoolId id, size_t shelf_size);
 
     // Destroy the heap with the given id
     // Return
@@ -100,7 +108,6 @@ public:
     // Caller is responsible for freeing the poitner
     // Return NULL if heap of the given id is not found
     Heap *FindHeap(PoolId id);
-    
 
     /*
       a region provides direct memory mapping APIs
@@ -109,7 +116,7 @@ public:
     // Return
     // - NO_ERROR: region was created
     // - ID_FOUND: the given id is in use
-    ErrorCode CreateRegion(PoolId id, size_t size); 
+    ErrorCode CreateRegion(PoolId id, size_t size);
 
     // Destroy the region with the given id
     // Return
@@ -134,17 +141,14 @@ public:
     // Caller is responsible for freeing the poitner
     // Return NULL if region of the given id is not found
     Region *FindRegion(PoolId id);
-    
+
 private:
-    static std::atomic<MemoryManager*> instance_;
-    static std::mutex mutex_;
-    
+
     MemoryManager();
     ~MemoryManager();
-    
-    class Impl_;        
+
+    class Impl_;
     std::unique_ptr<Impl_> pimpl_;
-    
 };
-} // namespace nvmm   
+} // namespace nvmm
 #endif

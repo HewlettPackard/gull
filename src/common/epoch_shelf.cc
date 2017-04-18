@@ -40,18 +40,19 @@
 #include "nvmm/shelf_id.h" // for PoolId
 
 #include "common/common.h"
+#include "common/epoch_shelf.h"
 
-#include "common/root_shelf.h"
+#include "shelf_usage/epoch_manager_impl.h"
 
 namespace nvmm {
 
 // TODO: clean up redundant code
-RootShelf::RootShelf(std::string pathname)
+EpochShelf::EpochShelf(std::string pathname)
     : path_{pathname}, fd_{-1}, addr_{nullptr}
 {
 }
 
-RootShelf::~RootShelf()
+EpochShelf::~EpochShelf()
 {
     if(IsOpen() == true)
     {
@@ -59,24 +60,24 @@ RootShelf::~RootShelf()
     }
 }
 
-bool RootShelf::Exist()
+bool EpochShelf::Exist()
 {
     // TODO: should also check magic number
     boost::filesystem::path shelf_path = boost::filesystem::path(path_.c_str());
     return boost::filesystem::exists(shelf_path);
 }
 
-bool RootShelf::IsOpen()
+bool EpochShelf::IsOpen()
 {
     return fd_ != -1;
 }
 
-void *RootShelf::Addr()
+void *EpochShelf::Addr()
 {
     return (char*)addr_+kCacheLineSize;
 }
 
-ErrorCode RootShelf::Create()
+ErrorCode EpochShelf::Create()
 {
     TRACE();
     if (Exist() == true)
@@ -91,19 +92,19 @@ ErrorCode RootShelf::Create()
     int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR|S_IWUSR);
     if (fd == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to create the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to create the epoch shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
     int ret = ftruncate(fd, kShelfSize);
     if (ret == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to truncate the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to truncate the epoch shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
     void *addr = mmap(NULL, kShelfSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (addr == MAP_FAILED)
     {
-        LOG(fatal) << "RootShelf: Failed to mmap the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to mmap the epoch shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
 
@@ -111,7 +112,7 @@ ErrorCode RootShelf::Create()
     ret = fam_atomic_register_region(addr, kShelfSize, fd, 0);
     if (ret == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to register fam atomic region " << path_;
+        LOG(fatal) << "EpochShelf: Failed to register fam atomic region " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
 
@@ -119,18 +120,10 @@ ErrorCode RootShelf::Create()
     char *cur = (char*)addr;
     cur+=kCacheLineSize;
 
-    // each pool will have a fam spinlock in this root shelf file
-    // for multi-process/multi-node
-    nvmm_fam_spinlock* array = (nvmm_fam_spinlock*)cur;
-    for(int i=0; i<ShelfId::kMaxPoolCount; i++)
-    {
-        array[i].init();
-    }
-
-    // there is also an array of cacheline-sized entires, e.g., to store pool type
-    size_t size = ShelfId::kMaxPoolCount*kCacheLineSize;
-    cur+=size;
-    memset(cur, 0, size);
+    // init epoch manager
+    EpochManagerImpl *em = new EpochManagerImpl(cur, true);
+    assert(em);
+    delete em;
 
     // finally set the magic number
     fam_atomic_u64_write((uint64_t*)addr, kMagicNum);
@@ -141,21 +134,21 @@ ErrorCode RootShelf::Create()
     ret = munmap(addr, kShelfSize);
     if (ret == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to unmap the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to unmap the epoch shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
 
     ret = close(fd);
     if (ret == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to close the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to close the epoch shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
 
     return NO_ERROR;
 }
 
-ErrorCode RootShelf::Destroy()
+ErrorCode EpochShelf::Destroy()
 {
     TRACE();
     ErrorCode ret = NO_ERROR;
@@ -193,7 +186,7 @@ ErrorCode RootShelf::Destroy()
     return ret;
 }
 
-ErrorCode RootShelf::Open()
+ErrorCode EpochShelf::Open()
 {
     TRACE();
     if(IsOpen() == true)
@@ -204,14 +197,14 @@ ErrorCode RootShelf::Open()
     fd_ = open(path_.c_str(), O_RDWR);
     if (fd_ == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to open the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to open the epoch shelf file " << path_;
         return SHELF_FILE_OPEN_FAILED;
     }
 
     addr_ = mmap(NULL, kShelfSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd_, 0);
     if (addr_ == MAP_FAILED)
     {
-        LOG(fatal) << "RootShelf: Failed to mmap the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to mmap the epoch shelf file " << path_;
         return SHELF_FILE_OPEN_FAILED;
     }
 
@@ -219,7 +212,7 @@ ErrorCode RootShelf::Open()
     int ret = fam_atomic_register_region(addr_, (uint64_t)kShelfSize, fd_, 0);
     if (ret == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to register fam atomic region " << path_;
+        LOG(fatal) << "EpochShelf: Failed to register fam atomic region " << path_;
         return SHELF_FILE_OPEN_FAILED;
     }
 
@@ -233,7 +226,7 @@ ErrorCode RootShelf::Open()
     }
 }
 
-ErrorCode RootShelf::Close()
+ErrorCode EpochShelf::Close()
 {
     TRACE();
     if(IsOpen() == false)
@@ -247,14 +240,14 @@ ErrorCode RootShelf::Close()
     int ret = munmap(addr_, kShelfSize);
     if (ret == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to unmap the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to unmap the epoch shelf file " << path_;
         return SHELF_FILE_CLOSE_FAILED;
     }
 
     ret = close(fd_);
     if (ret == -1)
     {
-        LOG(fatal) << "RootShelf: Failed to close the root shelf file " << path_;
+        LOG(fatal) << "EpochShelf: Failed to close the epoch shelf file " << path_;
         return SHELF_FILE_CLOSE_FAILED;
     }
 
