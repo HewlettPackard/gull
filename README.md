@@ -28,7 +28,8 @@ https://github.com/HewlettPackard/gull
 NVMM is still in alpha state. The basic functionalities are working, but performance is not
 optimized and crash recovery is still work in progress.
 
-NVMM runs on both NUMA and FAME systems.
+NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
+ Emulation](https://github.com/HewlettPackard/mdc-toolkit/blob/master/guide-FAME.md)) systems.
 
 ## Dependencies
 
