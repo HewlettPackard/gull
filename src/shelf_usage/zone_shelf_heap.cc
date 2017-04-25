@@ -84,7 +84,7 @@ ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size)
     // create zone layout
     // TODO: this will fail if the shelf file already exists; if the file exists and it is
     // already inited, it will fail
-    Zone *zone = new Zone(addr_, zone_size/4, 64, zone_size, helper, helper_size);
+    Zone *zone = new Zone(addr_, zone_size, 64, zone_size, helper, helper_size);
     delete zone;
     
     ret= UnmapCloseShelf();
