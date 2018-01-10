@@ -76,22 +76,29 @@ public:
     // TODO: not implemented yet
     GlobalPtr LocalToGlobal(void *addr);
 
+    size_t MinAllocSize();
+    void Merge();
+    void OnlineRecover();
+    void OfflineRecover();
+    void Stats();
+
 private:
     static int const kHeaderIdx = 0; // headers for zone
     static int const kZoneIdx = 1; // zone
 
     static int const kListCnt = 5; // 5 global freelists for delayed free
     static uint64_t const kWorkerSleepMicroSeconds = 50000;
-    static int const kFreeCnt = 1000; // free up to 1000 chunks everytime the background worker wakes up
+    uint64_t kFreeCnt = 1000; // free up to 1000 chunks everytime the background worker wakes up
 
     PoolId pool_id_;
     Pool pool_;
 
     size_t rmb_size_;
-    ShelfHeap *rmb_;
+    ShelfHeap *rmb_; // zone heap
 
     size_t region_size_;
-    ShelfRegion *region_;
+    ShelfRegion *region_; // headers of global freelists + headers of allocated memory chunks fron
+                          // zone heap
     void *mapped_addr_;
     void *header_;
 
@@ -112,6 +119,7 @@ private:
     int StartWorker();
     int StopWorker();
     void BackgroundWorker();
+    void OfflineFree();
 };
 } // namespace nvmm
 #endif

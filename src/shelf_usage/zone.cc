@@ -36,13 +36,14 @@
 
 #include "nvmm/global_ptr.h"
 
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
+#include "nvmm/fam.h"
 #include "common/common.h"
 #include "shelf_usage/zone_entry_stack.h"
 
 #include "shelf_usage/zone.h"
 #include "shelf_usage/zone_entry.h"
+
+#include "common/crash_points.h"
 
 struct timespec start, end;
 
@@ -85,11 +86,12 @@ inline uint64_t next_power_of_two(uint64_t n)
 }
 
 #define BYTE 8UL
+#define ATOMIC_SIZE 64UL
 #define KB 1024UL
 #define MB (KB * KB)
 #define GB (MB * KB)
 //#define TB (GB * KB)
-#define MAX_ZONE_SIZE (128 * GB)
+#define MAX_ZONE_SIZE (1024 * GB)
 #define MIN_OBJ_SIZE 64
 #define MAX_LEVEL_PER_ZONE power_of_two(MAX_ZONE_SIZE / MIN_OBJ_SIZE)
 //TODO: Add zoneheader size ????
@@ -188,7 +190,6 @@ Zone::~Zone()
 	return;
 }
 
-    
 /*
 Constructor for the Zone object. We here pass the mmap'ed memory,
 initial pool size, minimum object size and max pool size to initialize
@@ -247,7 +248,7 @@ Zone::Zone(void *addr,
 	}
 
 	if (!(is_power_of_two(max_pool_size))) {
-		message << "max_pool_size is not a power of two" << std::endl;
+            message << "max_pool_size is not a power of two: " << max_pool_size << std::endl;
 		throw std::runtime_error(message.str());
 	}
 
@@ -259,7 +260,7 @@ Zone::Zone(void *addr,
 
         // zero out the header region
         // TODO: is this necessary?
-        pmem_memset_persist(header_ptr, 0, zoneheader->max_zone_size/zoneheader->min_obj_size*sizeof(zone_entry));
+        fam_memset_persist(header_ptr, 0, zoneheader->max_zone_size/zoneheader->min_obj_size*sizeof(zone_entry));
 
         max_level_per_zone = find_level_from_size(zoneheader->max_zone_size, zoneheader->min_obj_size);
 	old_value = cas64((int64_t *)&zoneheader->max_zone_level, 0, MIN(max_level_per_zone, MAX_LEVEL_PER_ZONE));
@@ -300,6 +301,9 @@ Zone::Zone(void *addr,
 		message << "Zone header init failed" << std::endl;
 		throw std::runtime_error(message.str());
 	}
+
+        // init current_merge_level
+        fam_atomic_64_write((int64_t *)&zoneheader->current_merge_level, -1);
 
 	// TODO: Zoneheader size > bitmap_size/ merge_bitmap_size
 	// i.e the bitmap size is too small compared to zoneheader size.
@@ -389,13 +393,29 @@ uint64_t Zone::min_obj_size()
     return zoneheader->min_obj_size;
 }
 
+bool Zone::IsValidOffset(Offset p)
+{
+    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+    return p>0 && p<zoneheader->max_zone_size;
+}
+
+void* Zone::OffsetToPtr(Offset p)
+{
+    return from_Offset(p);
+}
+
+Offset Zone::PtrToOffset (void *p)
+{
+    return to_Offset(p);
+}
+
 /***************************************************************************/
 /*                                                                         */
 /* Allocating blocks                                                       */
 /*                                                                         */
 /***************************************************************************/
 
-Offset Zone::alloc(size_t size) 
+Offset Zone::alloc(size_t size)
 {
 	/*
 	1. Identify the freelist level from which we need to seek in free objects.
@@ -438,13 +458,15 @@ retry:	current_zone_level = fam_atomic_u64_read(&zoneheader->current_zone_level)
 			cur_size = find_size_from_level(level, min_obj_size);
 			while (level != orig_freelist_level) {
 				new_chunk_ptr = result + (cur_size >> 1);
+                                CrashPoints::CrashHere("alloc during split");
                                 // add the second half to the freelist
 				zoneheader->free_list[level-1].push(header_ptr, new_chunk_ptr/min_obj_size);
 				level--;
 				cur_size = cur_size >> 1;
 			}
 			// Zero out the chunk before returning the pointer to the caller.
-			pmem_memset_persist(from_Offset(result), 0, chunk_size);
+			fam_memset_persist(from_Offset(result), 0, chunk_size);
+                        CrashPoints::CrashHere("alloc before set bitmap");
 			set_bitmap_bit(zoneheader, orig_freelist_level, result);
                         return result;
 		}
@@ -477,8 +499,9 @@ retry:	current_zone_level = fam_atomic_u64_read(&zoneheader->current_zone_level)
 		}
 	}
 
+        //print_freelist();
         //print_bitmap();
-        //set_nextprint_freelist();
+
 	return 0;
 }
 
@@ -504,9 +527,9 @@ void Zone::free(Offset block) {
     // read the entry once, and then pass the entry and entry ptr to get_level_from_Offset,
     // reset_bitmap_bit, and free_list.push
     uint64_t level = get_level(zoneheader, block);
-    // Do we really need to do pmem_persist???
+    // Do we really need to do fam_persist???
     //int64_t* b = (int64_t*) from_Offset(block);
-    //pmem_persist(b, find_size_from_level);
+    //fam_persist(b, find_size_from_level);
 
     // TODO: to be safe, maybe we should check if the chunk was actually allocated or not
     reset_bitmap_bit(zoneheader, level, block);
@@ -546,7 +569,7 @@ bool Zone::grow()
 
 	current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
 	max_zone_level = zoneheader->max_zone_level;
-	//max_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->max_zone_level); 
+	//max_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->max_zone_level);
 
 	if (current_zone_level >= max_zone_level) {
                 // UNLOCK
@@ -590,6 +613,49 @@ bool Zone::is_grow_in_progress(struct Zone_Header *zoneheader)
 		return false;
 	}
 }
+
+
+void Zone::grow_crash_recovery()
+{
+    /*
+      Online, but only best effort; can only be called when we know that a crash during grow
+      happened or during offline recovery
+
+      TODO: zoneheader->grow_in_progress should be an epoch-based lock
+
+      1. Check for grow flag. If its set, then goto 2. Else just return.
+      2. Read the current_zone size.
+      3. Based on the current zone size, quickly check the higher levels freelists to see if the
+      grown chunk is added or not. Note that we only check the top of the stack, because it is not
+      always safe to walk through the list
+      4. If we cannot find anything in 3, then we assume there is a leak due to the failed grow
+      and print out a message to ask the user to run the offline GC tool
+      5. Clear the flag and continue.
+    */
+
+    uint64_t grow_in_progress;
+    uint64_t current_zone_level, zone_size;
+    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+
+    grow_in_progress = fam_atomic_u64_read((uint64_t *)&zoneheader->grow_in_progress);
+    if (!grow_in_progress)
+        return;
+
+    current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
+    zone_size = find_size_from_level(current_zone_level, zoneheader->min_obj_size);
+
+    for (int64_t level = (int64_t)current_zone_level; level >= 0; level--) {
+        uint64_t idx = fam_atomic_u64_read((uint64_t *)&zoneheader->free_list[level].head);
+        if (idx*zoneheader->min_obj_size >= zone_size)
+            return;
+    }
+
+    // there may be memory leak
+    printf("WARNING: a grow may have failed and there may be memory chunks leaked, please run the offline GC tool\n");
+
+    fam_atomic_u64_write((uint64_t *)&zoneheader->grow_in_progress, 0);
+}
+
 
 inline uint64_t Zone::get_level(struct Zone_Header *zoneheader, Offset ptr)
 {
@@ -641,10 +707,13 @@ inline void reset_bit(void *address, uint64_t bit_offset)
 
 void Zone::print_bitmap() {
     struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+    printf("max zone size: %lu\n", zoneheader->max_zone_size);
+    printf("min obj size: %lu\n", zoneheader->min_obj_size);
+    printf("max obj size: %lu\n", find_size_from_level(zoneheader->current_zone_level, zoneheader->min_obj_size));
     for(uint64_t i=1; i<=zoneheader->max_zone_size/zoneheader->min_obj_size; i++) {
         zone_entry entry = ((zone_entry*)header_ptr)[i];
         if (entry.is_allocated())
-            printf("%lu) %lu %lu %lu\n", i-1, entry.is_allocated()?1UL:0UL, entry.level(), entry.next());
+            printf("%lu) %lu %lu %lu\n", i-1, entry.is_allocated()?1UL:0UL, find_size_from_level(entry.level(), zoneheader->min_obj_size), entry.next());
     }
 }
 
@@ -655,10 +724,10 @@ void Zone::print_freelist() {
         uint64_t idx = (Offset)zoneheader->free_list[i].head;
         if (idx==0)
             continue;
-        printf("level %lu, head %lu\n", i, idx-1);
+        printf("level %lu, head %lu, size %lu\n", i, idx-1, find_size_from_level(i, zoneheader->min_obj_size));
         while (idx>0) {
             zone_entry entry = ((zone_entry*)header_ptr)[idx];
-            printf("level %lu, %lu) %lu %lu %lu\n", i, idx-1, entry.is_allocated()?1UL:0UL, entry.level(), entry.next());
+            printf("level %lu, %lu) %lu %lu %lu\n", i, idx-1, entry.is_allocated()?1UL:0UL, find_size_from_level(entry.level(), zoneheader->min_obj_size), entry.next()?entry.next()-1:0);
             idx = entry.next();
         }
     }
@@ -684,46 +753,81 @@ void Zone::reset_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offs
 	modify_bitmap_bit(zoneheader, level, ptr, false);
 }
 
-void Zone::start_merge()
+void Zone::merge()
 {
-	// This is the public interface that can be used by application to start merge. Internally,
-	// this API will call merge on each level starting from the lowest level to the highest level.
-	uint64_t merge_level, current_zone_level;
-	struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
+    //std::cout << "Before merge: " << std::endl;
+    //print_freelist();
 
-	// TODO: Can we just do fine without atomic read? In worst case, we might skip doing merge
-	// for the highest level if the current_zone_level increases. But in such case, it shouldn't
-	// matter much as we wont find entries in free-lists.
-	current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
+    // This is the public interface that can be used by application to start merge. Internally,
+    // this API will call merge on each level starting from the lowest level to the highest level.
+    int64_t merge_level;
+    uint64_t current_zone_level;
+    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
 
-	merge_level = 0;
-	while (merge_level < current_zone_level) {
-		if (merge(zoneheader, merge_level)) {
-			merge_level = merge_level + 1;
-		} else {
-			std::ostringstream message;
-			message << "Aborting merge as two merge processes cannot "
-			"run simultaneously" << std::endl;
-			throw std::runtime_error(message.str()); 
-			break;
-		}
-	}
+    // TODO: Can we just do fine without atomic read? In worst case, we might skip doing merge
+    // for the highest level if the current_zone_level increases. But in such case, it shouldn't
+    // matter much as we wont find entries in free-lists.
+    current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
+
+    merge_level = 0;
+    while (merge_level < (int64_t)current_zone_level) {
+        if (merge(zoneheader, merge_level)) {
+            merge_level = merge_level + 1;
+        } else {
+            std::ostringstream message;
+            message << "Aborting merge as two merge processes cannot "
+                "run simultaneously" << std::endl;
+            throw std::runtime_error(message.str());
+            break;
+        }
+    }
+
+    //std::cout << "After merge: " << std::endl;
+    //print_freelist();
 }
 
 bool Zone::is_merge_in_progress(struct Zone_Header *zoneheader)
 {
-	uint64_t merge_in_progress = fam_atomic_u64_read((uint64_t *)&zoneheader->merge_in_progress);
-	if (merge_in_progress) {
-		return true;
-	} else {
-		return false;
-	}
+    uint64_t merge_in_progress = fam_atomic_u64_read((uint64_t *)&zoneheader->merge_in_progress);
+    if (merge_in_progress) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
+// 1
+bool Zone::enter_merge(struct Zone_Header *zoneheader) {
+    std::cout << "merge: enter merge" << std::endl;
+    int64_t old_value;
+    old_value = cas64((int64_t *)&zoneheader->merge_in_progress, 0, 1);
+    if (old_value != 0) {
+        // Someone else won the race to start the merge. Return false to let the
+        // caller know that someone else started the merge. The caller has to
+        // decide whether to wait or move forward.
+        return false;
+    }
+    CrashPoints::CrashHere("merge after 1");
+
+    return true;
+}
+
+// 11
+bool Zone::leave_merge(struct Zone_Header *zoneheader) {
+    std::cout << "merge: leave merge" << std::endl;
+    int64_t old_value = cas64((int64_t *)&zoneheader->merge_in_progress, 1, 0);
+    if (old_value != 1) {
+        // The cas64 shouldn't fail ever as we are the only one doing a merge.
+        assert(0);
+    }
+    CrashPoints::CrashHere("merge after 11");
+    return true;
+}
 
 // 2,3,4
 void Zone::swap_freelist(struct Zone_Header *zoneheader, uint64_t level) {
     assert(zoneheader->merge_status == MERGE_DEFAULT);
+    std::cout << "merge: swap freelist" << std::endl;
 
     int64_t old_level, old_value;
 
@@ -737,22 +841,22 @@ void Zone::swap_freelist(struct Zone_Header *zoneheader, uint64_t level) {
         throw std::runtime_error(message.str());
     }
 
-    printf("Merge happening at level %ld\n", level);
+    CrashPoints::CrashHere("merge after 2");
 
     // swap freelist
     // TODO: Another method can be to remove just X% of the freelist instead of the entire freelist.
-    Offset level_head;
-    Offset safe_copy_head;
+    uint64_t level_head;
+    uint64_t safe_copy_head;
 
     level_head = fam_atomic_u64_read((uint64_t *)&zoneheader->free_list[level].head);
     for (;;) {
         // Loop until the safe copy and level freelist are in sync and nobody changes the level
         // freelist before the safe copy is properly copied and the level freelist is cleared.
-    retry:		safe_copy_head = fam_atomic_u64_read((uint64_t *)&zoneheader->safe_copy.head);
+    retry:
+        safe_copy_head = fam_atomic_u64_read((uint64_t *)&zoneheader->safe_copy.head);
 
         // TODO: do we need CAS here? it seems that no one else can be doing merge since we have
         // the merge lock
-        // BUG TODO: should we use CAS128? head and the aba_counter
         old_value = cas64((int64_t *)&zoneheader->safe_copy.head, safe_copy_head, level_head);
         if (old_value != (int64_t)safe_copy_head) {
             goto retry;
@@ -767,15 +871,22 @@ void Zone::swap_freelist(struct Zone_Header *zoneheader, uint64_t level) {
         printf("Trying again\n");
     }
 
+    CrashPoints::CrashHere("merge after 3");
+
     old_value = cas64((int64_t *)&zoneheader->merge_status, MERGE_DEFAULT, MERGE_SWAP_COMPLETED);
     if (old_value != MERGE_DEFAULT) {
         assert(0);
     }
+
+    CrashPoints::CrashHere("merge after 4");
 }
 
 // 5,6
 // Build the merge bitmap by walking through the entries in the freelist.
 void Zone::create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level) {
+    assert(zoneheader->merge_status == MERGE_SWAP_COMPLETED);
+    std::cout << "merge: create merge bitmap" << std::endl;
+
     uint64_t bitmap_offset, bit_offset;
     uint64_t total_chunks = 0;
     void *modifying_address;
@@ -783,38 +894,44 @@ void Zone::create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level) {
     Offset merge_bitmap_start = zoneheader->merge_bitmap_start_addr;
     size_t min_obj_size = zoneheader->min_obj_size;
     size_t chunk_size = find_size_from_level(level, min_obj_size);
-    Offset next_ptr;
-    Offset ptr = zoneheader->safe_copy.head;
+    zone_entry *alloc_bitmap_ptr = (zone_entry*)header_ptr;
+
+    uint64_t next_idx;
+    uint64_t idx = zoneheader->safe_copy.head;
 
     // zero out the merge bitmap
-    pmem_memset_persist(from_Offset(zoneheader->merge_bitmap_start_addr),
-                        0, ((1UL << (zoneheader->max_zone_level)) / BYTE));
+    fam_memset_persist(from_Offset(zoneheader->merge_bitmap_start_addr),
+                       0, ((1UL << (zoneheader->max_zone_level)) / BYTE));
 
     for (;;) {
-        if (ptr == 0) {
+        if (idx == 0) {
             break;
         }
+        zone_entry entry = (zone_entry)fam_atomic_u64_read((uint64_t *)(alloc_bitmap_ptr+idx));
+        next_idx = entry.next();
 
-        next_ptr = fam_atomic_u64_read((uint64_t *)from_Offset(ptr));
-
-        bitmap_offset = (ptr / chunk_size) / (BYTE);
-        bit_offset = ((ptr / chunk_size) % (BYTE));
-        //bit_offset = (BYTE - 1) - ((result / chunk_size) % (BYTE));
-        modifying_address = from_Offset(merge_bitmap_start + bitmap_offset);
-        //printf("Result %ld, bitmap_offset %ld, bit_offset %ld\n", result, bitmap_offset, bit_offset);
+        bitmap_offset = ((idx-1)*min_obj_size/chunk_size)/ (ATOMIC_SIZE);
+        bit_offset = ((idx-1)*min_obj_size/chunk_size) % (ATOMIC_SIZE);
+        modifying_address = from_Offset(merge_bitmap_start + bitmap_offset*(ATOMIC_SIZE/BYTE));
+        //std::cout << "create_merge_bitmap: " << idx-1 << " " << (next_idx?next_idx-1:0) << " " << bitmap_offset << " " << bit_offset << std::endl;
         set_bit(modifying_address, bit_offset);
         total_chunks = total_chunks + 1;
-        ptr = next_ptr;
+        idx = next_idx;
     }
+    CrashPoints::CrashHere("merge after 5");
 
     int64_t old_value = cas64((int64_t *)&zoneheader->merge_status, MERGE_SWAP_COMPLETED, MERGE_BITMAP_COMPLETED);
     if (old_value != MERGE_SWAP_COMPLETED) {
         assert(0);
     }
+    CrashPoints::CrashHere("merge after 6");
 }
 
 // 7,8
 void Zone::do_merge(struct Zone_Header *zoneheader, uint64_t level) {
+    assert(zoneheader->merge_status == MERGE_BITMAP_COMPLETED);
+    std::cout << "merge: do merge" << std::endl;
+
     uint64_t shift, length = 0, max_bitmap_length;
     uint64_t bitmap_offset, bitmap_data;
     uint64_t unmerged_chunks = 0, merged_chunks = 0;
@@ -834,9 +951,9 @@ void Zone::do_merge(struct Zone_Header *zoneheader, uint64_t level) {
     }
 
     while (length < max_bitmap_length) {
-        shift = 0xc000000000000000;
+        shift = 0x0000000000000003;
         bitmap_offset = merge_bitmap_start + length;
-        bitmap_data = fam_atomic_u64_read((uint64_t *)(from_Offset(bitmap_offset))); 
+        bitmap_data = fam_atomic_u64_read((uint64_t *)(from_Offset(bitmap_offset)));
         // No need to check anything in case the entire 64 bytes is 0.
         if (bitmap_data == 0) {
             length = length + 8;
@@ -847,55 +964,62 @@ void Zone::do_merge(struct Zone_Header *zoneheader, uint64_t level) {
         // shouldn't happen as the max_bitmap_length will be a multiple of 8 always until the last few
         // levels where it can be less than 8 bytes. In that case, as the merge_bitmap size is way more
         // than max_bitmap_length and so everything should work fine.
-        int i;
-        for (i = ((8 * BYTE) - 1); i > 0; i = i - 2) {
+        uint i;
+        for (i = 0; i<(8 * BYTE); i+=2) {
             if ((bitmap_data & shift) == shift) {
                 // Merge the buddies to make a larger chunk.
-                new_chunk_ptr = ((BYTE * length) + (i - 1)) * chunk_size;
+                new_chunk_ptr = ((BYTE * length) + i) * chunk_size;
                 //printf("New chunk address %ld, length %ld, i %ld\n", new_chunk_ptr, length, i);
                 // As the starting part is always reserved for zone-header, there will
                 // never be a case where new_chunk_ptr is 0.
                 //TODO: Aseert the bitmap and merge bitmap addresses too.
-                assert(new_chunk_ptr != 0); 
+                assert(new_chunk_ptr != 0);
                 assert(new_chunk_ptr <= zoneheader->max_zone_size);
+                //std::cout << "merged: " << new_chunk_ptr/min_obj_size-1 << std::endl;
                 zoneheader->post_merge_next_level.push(header_ptr, new_chunk_ptr/min_obj_size);
                 merged_chunks = merged_chunks + 2;
             } else {
                 // The buddies are not present. Hence keep the chunk at the same level.
                 if ((bitmap_data >> i) & 1UL) {
-                    //if ((bitmap_data >> (((8 * BYTE) - 1) - i)) & 1UL) {
                     // The left buddy is present.
                     new_chunk_ptr = ((BYTE * length) + i) * chunk_size;
-                } else if ((bitmap_data >> (i - 1)) & 1UL) {
+                } else if ((bitmap_data >> (i + 1)) & 1UL) {
                     // the right buddy is present.
-                    new_chunk_ptr = (((BYTE * length) + i) - 1 ) * chunk_size;
+                    new_chunk_ptr = (((BYTE * length) + i) + 1 ) * chunk_size;
                 } else {
-                    shift = shift >> 2;
+                    shift = shift << 2;
                     continue;
                 }
                 // As the starting part is always reserved for zone-header, there will
                 // never be a case where new_chunk_ptr is 0.
-                assert(new_chunk_ptr != 0); 
+                assert(new_chunk_ptr != 0);
                 assert(new_chunk_ptr <= zoneheader->max_zone_size);
+                //std::cout << "unmerged: " << new_chunk_ptr/min_obj_size-1 << std::endl;
                 zoneheader->post_merge_level.push(header_ptr, new_chunk_ptr/min_obj_size);
                 unmerged_chunks = unmerged_chunks + 1;
             }
-            shift = shift >> 2;
+            shift = shift << 2;
         }
         assert(shift == 0);
         length = length + 8;
+        CrashPoints::CrashHere("merge during 7");
     }
+
 
     int64_t old_value = cas64((int64_t *)&zoneheader->merge_status, MERGE_BITMAP_COMPLETED, MERGE_FREELIST_COMPLETED);
     if (old_value != MERGE_BITMAP_COMPLETED) {
         assert(0);
     }
 
+    CrashPoints::CrashHere("merge after 8");
     //printf("Unmerged_chunks = %ld, Merged_chunks = %ld, Total_chunks = %ld\n", unmerged_chunks, merged_chunks, total_chunks);
     //assert(unmerged_chunks + merged_chunks  == total_chunks);
 }
 
+// 9,10
 void Zone::finish_merge(struct Zone_Header *zoneheader, uint64_t level) {
+    std::cout << "merge: finish merge" << std::endl;
+
     uint64_t result;
 
     // Again merge back the chunks to the freelist.
@@ -907,6 +1031,8 @@ void Zone::finish_merge(struct Zone_Header *zoneheader, uint64_t level) {
         zoneheader->free_list[level + 1].push(header_ptr, result);
     }
 
+    CrashPoints::CrashHere("merge during 9");
+
     for(;;) {
         result = zoneheader->post_merge_level.pop(header_ptr);
         if (!result) {
@@ -916,11 +1042,10 @@ void Zone::finish_merge(struct Zone_Header *zoneheader, uint64_t level) {
     }
 
     // zero out the merge bitmap
-    pmem_memset_persist(from_Offset(zoneheader->merge_bitmap_start_addr),
+    fam_memset_persist(from_Offset(zoneheader->merge_bitmap_start_addr),
                         0, ((1UL << (zoneheader->max_zone_level)) / BYTE));
 
     // reset safe_copy to 0
-    // TODO: 128-bit?
     fam_atomic_u64_write((uint64_t*)&zoneheader->safe_copy, 0);
 
     // reset current_merge_level to -1
@@ -936,6 +1061,7 @@ void Zone::finish_merge(struct Zone_Header *zoneheader, uint64_t level) {
     if (old_value != MERGE_FREELIST_COMPLETED) {
         assert(0);
     }
+    CrashPoints::CrashHere("merge after 10");
 }
 
 bool Zone::merge(struct Zone_Header *zoneheader, uint64_t level)
@@ -956,8 +1082,8 @@ bool Zone::merge(struct Zone_Header *zoneheader, uint64_t level)
 	    the post merge level+1 freelist.
 	7.2 If the neightbours are not present in the freelist, merge is not possible
 	    and hence add it to post merge level freelist.
-	8. Update the merge state to reflect that bitmap walk is complete and 
-	   merging decisions have to be taken.
+	8. Update the merge state to reflect that bitmap walk is complete and merging decisions have
+	to be taken.
 	9. Walk through the post_merge freelists and put all the chunks from the
 	   freelists to the original freelists.
 	10. Clear all the status, current merge level
@@ -972,17 +1098,12 @@ bool Zone::merge(struct Zone_Header *zoneheader, uint64_t level)
 
 	// TODO: Use epoch provided value instead of 1 to set the flag.
         // TODO: because we use lock here, there is no need to do cas in many places below
+        printf("Merge happening at level %ld\n", level);
 
         // 1
         // LOCK
-        int64_t old_value;
-	old_value = cas64((int64_t *)&zoneheader->merge_in_progress, 0, 1);
-	if (old_value != 0) {
-		// Someone else won the race to start the merge. Return false to let the
-		// caller know that someone else started the merge. The caller has to 
-		// decide whether to wait or move forward.
-		return false;
-	}
+        if(enter_merge(zoneheader)==false)
+            return false;
 
         // 2,3,4
         swap_freelist(zoneheader, level);
@@ -998,65 +1119,11 @@ bool Zone::merge(struct Zone_Header *zoneheader, uint64_t level)
 
         // 11
         // UNLOCK
-	old_value = cas64((int64_t *)&zoneheader->merge_in_progress, 1, 0);
-        if (old_value != 1) {
-		// The cas64 shouldn't fail ever as we are the only one doing a merge.
-		assert(0);
+        if(leave_merge(zoneheader)==false) {
+            assert(0);
         }
 
 	return true;
-}
-
-bool Zone::IsValidOffset(Offset p)
-{
-    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
-    return p>0 && p<zoneheader->max_zone_size;
-}
-
-void* Zone::OffsetToPtr(Offset p)
-{
-    return from_Offset(p);
-}
-
-void Zone::grow_crash_recovery()
-{
-    /*
-      Online, but only best effort
-
-      1. Check for grow flag. If its set, then goto 2. Else just return.
-      2. Read the current_zone size.
-      3. Based on the current zone size, quickly check the higher levels freelists to see if the
-      grown chunk is added or not. Note that we only check the top of the stack, because it is not
-      always safe to walk through the list
-      4. If we cannot find anything in 3 or 4, then we assume there is a leak due to the failed grow
-      and print out a message to ask the user to run the offline GC tool
-      5. Clear the flag and continue.
-    */
-
-    uint64_t grow_in_progress;
-    uint64_t current_zone_level, zone_size;
-    struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
-
-    grow_in_progress = fam_atomic_u64_read((uint64_t *)&zoneheader->grow_in_progress);
-    if (!grow_in_progress)
-        return;
-
-    // TODO: re-acquire the grow lock, so that there is no one else doing grow or grow recovery
-    current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
-    zone_size = find_size_from_level(current_zone_level, zoneheader->min_obj_size);
-
-    for (int64_t level = (int64_t)current_zone_level; level >= 0; level--) {
-        // TODO: 128-bit?
-        uint64_t ptr = fam_atomic_u64_read((uint64_t *)&zoneheader->free_list[level].head);
-        if (ptr>=zone_size) // zone_size is the starting offset of the grown region
-            return;
-    }
-
-    // there may be memory leak
-    printf("WARNING: a grow may have failed and there may be memory chunks leaked, please run the offline GC tool\n");
-
-    // TODO: release the grow lock
-    fam_atomic_u64_write((uint64_t *)&zoneheader->grow_in_progress, 0);
 }
 
 void Zone::merge_crash_recovery()
@@ -1080,40 +1147,51 @@ void Zone::merge_crash_recovery()
 	   by walking the post merge freelist and complete the merge. Print
 	   a message saying that there can be atmost one chunk lost and can be
 	   reclaimed by running an offline checker.
-	7. Clear merge status, merge level, bitmaps and merge_in_progress flag
-	   and return.
+	7. Clear merge status, merge level, bitmaps.
+        8. Clear merge_in_progress flag and return.
 	*/
+
+    std::cout << "merge_crash_recovery: START" << std::endl;
+    //std::cout << "Before merge_crash_recovery: " << std::endl;
+    //print_freelist();
 
     struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
 
+    // 1
     uint64_t merge_in_progress = fam_atomic_u64_read((uint64_t *)&zoneheader->merge_in_progress);
-    if (!merge_in_progress)
+    if (!merge_in_progress) {
+        std::cout << "merge_crash_recovery: no merge was in progress" << std::endl;
+        std::cout << "merge_crash_recovery: END" << std::endl;
         return;
+    }
 
-    // TODO: re-acquire the merge lock, so that no one else is doing merge or merge recovery
     int64_t current_merge_level = fam_atomic_64_read(&zoneheader->current_merge_level);
-    uint64_t merge_status = fam_atomic_u64_read(&zoneheader->merge_status);
+    uint64_t merge_status;
 
+    merge_status = fam_atomic_u64_read(&zoneheader->merge_status);
     if (merge_status == MERGE_DEFAULT) {
         if (current_merge_level == -1) {
             // 2
             // that merge was not even started
-            fam_atomic_u64_write((uint64_t *)&zoneheader->merge_in_progress, 0);
+            std::cout << "merge_crash_recovery: merge was in progress but was not started" << std::endl;
+            leave_merge(zoneheader);
+            std::cout << "merge_crash_recovery: END" << std::endl;
             return;
         }
         else {
             // 3
-            // TODO: 128-bit?
             uint64_t safe_copy = fam_atomic_u64_read((uint64_t*)&zoneheader->safe_copy);
             if (safe_copy == 0) {
                 // freelist was not swapped
                 swap_freelist(zoneheader, current_merge_level);
+                merge_status = fam_atomic_u64_read(&zoneheader->merge_status);
             }
             else {
                 // we don't know if this safe_copy value is correct
                 // e.g., when a crash occurs between the two CASes in swap_freelist()
                 // to be safe, we print out a warning and ask the user to run the offline GC
-                printf("WARNING: a merge failed and there may be memory chunks leaked, please run the offline GC tool\n");
+                std::cout << "merge_crash_recovery: WARNING: a merge failed and there may be memory "
+                          << "chunks leaked, please run the offline GC tool" << std::endl;
             }
         }
     }
@@ -1121,22 +1199,52 @@ void Zone::merge_crash_recovery()
     // 4
     if (merge_status == MERGE_SWAP_COMPLETED) {
         // zero out the merge bitmap
-        pmem_memset_persist(from_Offset(zoneheader->merge_bitmap_start_addr),
+        fam_memset_persist(from_Offset(zoneheader->merge_bitmap_start_addr),
                             0, ((1UL << (zoneheader->max_zone_level)) / BYTE));
 
         create_merge_bitmap(zoneheader, current_merge_level);
+        merge_status = fam_atomic_u64_read(&zoneheader->merge_status);
     }
 
     // 5
     if (merge_status == MERGE_BITMAP_COMPLETED) {
         do_merge(zoneheader, current_merge_level);
+        merge_status = fam_atomic_u64_read(&zoneheader->merge_status);
     }
 
     // 6, 7
     if (merge_status == MERGE_FREELIST_COMPLETED) {
         finish_merge(zoneheader, current_merge_level);
+        merge_status = fam_atomic_u64_read(&zoneheader->merge_status);
     }
 
+    // 8
+    if (merge_status == MERGE_DEFAULT) {
+        leave_merge(zoneheader);
+    }
+
+    std::cout << "merge_crash_recovery: END" << std::endl;
+
+    // TODO: should we continue?
+    // continue merging of high levels
+    uint64_t current_zone_level = fam_atomic_u64_read((uint64_t *)&zoneheader->current_zone_level);
+    int64_t merge_level = (int64_t)current_merge_level;
+
+    merge_level++;
+    while (merge_level < (int64_t)current_zone_level) {
+        if (merge(zoneheader, merge_level)) {
+            merge_level = merge_level + 1;
+        } else {
+            std::ostringstream message;
+            message << "Aborting merge as two merge processes cannot "
+                "run simultaneously" << std::endl;
+            throw std::runtime_error(message.str());
+            break;
+        }
+    }
+
+    //std::cout << "After merge_crash_recovery: " << std::endl;
+    //print_freelist();
     return;
 }
 
@@ -1170,29 +1278,41 @@ inline bool check_n_bits(void *address, uint64_t offset, uint64_t n) {
     return true;
 }
 
+void Zone::online_recover()
+{
+    merge_crash_recovery();
+}
 
-void Zone::detect_lost_chunks()
+void Zone::offline_recover()
+{
+    grow_crash_recovery();
+    merge_crash_recovery();
+    garbage_collection();
+}
+
+void Zone::garbage_collection()
 {
     /*
       Offline only!
 
       The allocation bitmap is the ground truth. If a chunk does not have its bit set in the
-      allocation bitmap, the chunk is free or leaked. Therefore, this process finds out which chunks
-      are lost and insert them back to the freelists.
+      allocation bitmap, the chunk is free or leaked. If the same chunk does not appear in the
+      freelist, then it is leaked. Therefore, this process finds out which chunks
+      are lost and inserts them back to the freelists.
 
       If a crash occurs before this process is finished, we can just restart this process without
-      doing any extra recovery. 
+      doing any extra recovery.
 
       This is called when there is a possibility of lost block lurking around.
       We do this check when the zone is not available for business else detecting
       lost blocks will be very tricky.
-      1. Make sure that grow_crash_recovery() and merge_crash_recovery()
-      is already called.
-      2. Use the merge bitmap as temporary space
-      3. For each level i (starting from 0), treat 2^i bits in the merge bitmap as a BIT
-      3.1. Copy the allocation bitmap to the merge bitmap (1 bit => 1 BIT)
+      2. Use the merge bitmap as temporary space to record chunks that are not lost (either in the
+      allocation bitmap or the freelist)
+      3. For each level i (starting from 0), treat 2^i bits in both allocation and merge bitmaps as
+      a BIT
+      3.1. Copy the allocation bitmap to the merge bitmap (BIT by BIT)
       3.2. Walk the freelist, set BIT to 1 when a chunk exsits
-      3.3. Check the merge bitmap, find out invalid BIT sequences. BITs should always appear in
+      3.3. Check the merge bitmap, find out invalid BIT sequences. BITs (1s) should always appear in
       pairs and are always aligned to 2^(i+1). For example, for level 0, BIT is 1 bit, so 01/10
       (BIT 01/10) at offset 2n are invalid sequences. As another example, for level 1, BIT is 2
       bits, so 0011/1100 (BIT 01/10) at offset 4n are invalid sequences.
@@ -1203,70 +1323,52 @@ void Zone::detect_lost_chunks()
       4. In the end, the merge bitmap should be all 1's.
     */
 
-// TODO: for delayed-free
-/*    
-    
-    // 1
-    grow_crash_recovery();
-    merge_crash_recovery();
-
     // 2
     struct Zone_Header *zoneheader = (struct Zone_Header *)shelf_location_ptr;
     memset(from_Offset(zoneheader->merge_bitmap_start_addr),
            0, ((1UL << (zoneheader->max_zone_level)) / BYTE));
 
     // 3
-    Offset bitmap_start = zoneheader->bitmap_start_addr;
     size_t min_obj_size = zoneheader->min_obj_size;
     uint64_t max_level = zoneheader->max_zone_level;
-    uint64_t total_bitmap_bits = (1UL << (max_level + 1));
+
+    zone_entry *alloc_bitmap_ptr = (zone_entry*)header_ptr;
+    uint64_t alloc_bitmap_bit_cnt = (1UL << max_level);
+
     Offset merge_bitmap_start = zoneheader->merge_bitmap_start_addr;
     uint8_t *merge_bitmap_ptr = (uint8_t*)from_Offset(merge_bitmap_start);
+    uint64_t merge_bitmap_bit_cnt = (1UL << max_level);
 
     for(uint64_t level = 0; level<=max_level; level++) {
         uint64_t BIT = (1UL << level);
         size_t chunk_size = find_size_from_level(level, min_obj_size);
-
         // 3.1
-        // number of bits above this level in alloc bitmap
-        uint64_t bitmap_bit_cnt_above_level = (1UL << ((max_level - level) + 1));
-        // the bit idx of the first bit at this level in alloc bitmap
-	uint64_t bitmap_bit_start_at_level = total_bitmap_bits - bitmap_bit_cnt_above_level;
-        // number of bits at this level in alloc bitmap
-	uint64_t bitmap_bit_cnt_at_level = (1UL << (max_level - level));
-
-        uint8_t *bitmap_ptr = (uint8_t*)from_Offset(bitmap_start);
-        // for every bit in alloc bitmap
-        for(uint64_t i = 0; i < bitmap_bit_cnt_at_level; i++) {
-            uint64_t bitidx = bitmap_bit_start_at_level+i;
-            uint64_t bytepos = bitidx/BYTE, bitpos = bitidx % BYTE;
-            uint8_t byte = *(bitmap_ptr+bytepos);
-            uint8_t mask = (uint8_t)(1UL << bitpos);
-            if (byte & mask) {
-                uint64_t merge_bytepos = (i*BIT)/BYTE, merge_bitpos = (i*BIT) % BYTE;
+        for(uint64_t i=0; i < alloc_bitmap_bit_cnt; i+=BIT) {
+            // i=0 is reserved to represent NULL
+            zone_entry entry = alloc_bitmap_ptr[i+1];
+            if (entry.is_allocated() && entry.level() == level) {
+                uint64_t merge_bytepos = i/BYTE, merge_bitpos = i%BYTE;
                 set_n_bits(merge_bitmap_ptr+merge_bytepos, merge_bitpos, BIT);
             }
         }
 
-
         // 3.2
-        Offset next_ptr, ptr = zoneheader->free_list[level].head;
+        uint64_t next_idx, idx = zoneheader->free_list[level].head;
         for (;;) {
-            if (ptr == 0) {
+            if (idx == 0) {
                 break;
             }
 
-            next_ptr = *((uint64_t *)from_Offset(ptr));
+            zone_entry entry = (zone_entry)fam_atomic_u64_read((uint64_t *)(alloc_bitmap_ptr+idx));
+            next_idx = entry.next();
 
-            uint64_t merge_bytepos = (ptr / chunk_size) / (BYTE);
-            uint64_t merge_bitpos = ((ptr / chunk_size) % (BYTE));
+            uint64_t merge_bytepos = (idx-1)/BYTE;
+            uint64_t merge_bitpos = (idx-1)%BYTE;
             set_n_bits(merge_bitmap_ptr+merge_bytepos, merge_bitpos, BIT);
-            ptr = next_ptr;
+            idx = next_idx;
         }
 
-
         // 3.3 && 3.4
-        uint64_t merge_bitmap_bit_cnt = (1UL << max_level);
         for(uint64_t i=0; i < merge_bitmap_bit_cnt; i+=2*BIT) {
             // check two BITs at a time
             uint64_t merge_bytepos1 = i/BYTE, merge_bitpos1 = i%BYTE;
@@ -1275,11 +1377,13 @@ void Zone::detect_lost_chunks()
             bool res2 = check_n_bits(merge_bitmap_ptr+merge_bytepos2, merge_bitpos2, BIT);
             if (res1==false && res2==true) {
                 Offset ptr = (i/BIT) * chunk_size;
+                std::cout << "push " << i/BIT << std::endl;
                 zoneheader->free_list[level].push(header_ptr, ptr/min_obj_size);
                 set_n_bits(merge_bitmap_ptr+merge_bytepos1, merge_bitpos1, BIT);
             }
             if (res1==true && res2==false) {
                 Offset ptr = (i/BIT+1) * chunk_size;
+                std::cout << "push else " << i/BIT +1<< std::endl;
                 zoneheader->free_list[level].push(header_ptr, ptr/min_obj_size);
                 set_n_bits(merge_bitmap_ptr+merge_bytepos2, merge_bitpos2, BIT);
             }
@@ -1287,14 +1391,17 @@ void Zone::detect_lost_chunks()
     }
 
     // 4
-    uint64_t merge_bitmap_bit_cnt = (1UL << max_level);
     for(uint64_t i=0; i < merge_bitmap_bit_cnt; i++) {
         uint64_t merge_bytepos = i/BYTE, merge_bitpos = i%BYTE;
         if (check_n_bits(merge_bitmap_ptr+merge_bytepos, merge_bitpos, 1)==false) {
             printf("WARNING: GC failed!\n");
         }
     }
-*/
+}
+
+void Zone::stats() {
+    print_bitmap();
+    print_freelist();
 }
 
 }

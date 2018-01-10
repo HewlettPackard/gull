@@ -25,9 +25,11 @@
 #ifndef _NVMM_FAM_ATOMIC_H_
 #define _NVMM_FAM_ATOMIC_H_
 
-#include <fam_atomic.h>
-
-namespace nvmm {
+#ifdef FAM_ATOMIC_NATIVE
+# include "fam_atomic_x86.h"
+#else
+# include <fam_atomic.h>
+#endif
 
 // wrapper for unsigned integers
 inline uint32_t fam_atomic_u32_read(uint32_t* addr) {
@@ -128,5 +130,4 @@ private:
     struct fam_spinlock lock_;
 }  __attribute__((__aligned__(64)));
 
-} // namespace nvmm
 #endif

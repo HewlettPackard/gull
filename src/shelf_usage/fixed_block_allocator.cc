@@ -34,13 +34,10 @@
 #include <stdexcept>
 #include <string>
 
-#include "shelf_usage/smart_shelf.h"
-
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
+#include "nvmm/fam.h"
 #include "common/common.h"
+#include "shelf_usage/smart_shelf.h"
 #include "shelf_usage/stack.h"
-
 #include "shelf_usage/fixed_block_allocator.h"
 
 namespace nvmm {
@@ -241,7 +238,7 @@ void FixedBlockAllocator::free(Offset block) {
         return;
 
     uint64_t* b = (uint64_t*) underlying_shelf[block];
-    pmem_persist(b, underlying_shelf->block_size);
+    fam_persist(b, underlying_shelf->block_size);
 
     unsafe_free(block);
 }

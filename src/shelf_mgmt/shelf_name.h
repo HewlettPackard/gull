@@ -30,21 +30,21 @@
 #include <sstream>
 
 #include "nvmm/shelf_id.h"
+#include "common/config.h"
 
 namespace nvmm {
 
 // convert shelf id to full pathname
 
-// right now SHELF_BASE_DIR is defined in the root CMakeLists.txt
 // shelf name = prefix + "_" + shelf_id + "_" + suffix
 // all shelf names share a common prefix: BASE_DIR/file_prefix. e.g. /lfs/Shelf
 // suffix is optional
 class ShelfName
 {
 public:
-    ShelfName(std::string base_dir = SHELF_BASE_DIR, std::string file_prefix = "Shelf")
+    ShelfName(std::string base_dir = config.ShelfBase, std::string file_prefix = "Shelf")
     { 
-        prefix_ = std::string(base_dir) + "/" + std::string(SHELF_USER) + "_" + file_prefix;
+        prefix_ = std::string(base_dir) + "/" + std::string(config.ShelfUser) + "_" + file_prefix;
     }
 
     ~ShelfName()

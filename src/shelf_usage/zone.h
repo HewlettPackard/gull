@@ -44,8 +44,13 @@ public:
     // returns 0 if no blocks are currently available
     Offset alloc(size_t size);
     // [unsafe_]free(0) is a no-op
-    void     free       (Offset block);
-    void     start_merge();
+    void free(Offset block);
+    void merge();
+    void offline_recover(); // grow, merge, and garbage collection; must run offline
+    void online_recover(); // merge; can run online
+
+    // TODO
+    // void recover_online(); // for grow
 
     // TODO
     // requires all writes to block block have already been persisted
@@ -55,8 +60,7 @@ public:
 
     // converting between external Offset (with size encoded) and local-address-space pointers
     void*    OffsetToPtr(Offset p);
-    // TODO
-    //Offset PtrToOffset (void*    p);
+    Offset PtrToOffset (void*    p);
 
     // for delayed free
     uint64_t min_obj_size();
@@ -67,6 +71,7 @@ public:
     // debugging
     void print_bitmap();
     void print_freelist();
+    void stats();
 
  private:
     char *shelf_location_ptr;
@@ -91,7 +96,10 @@ public:
     bool merge(struct Zone_Header *zoneheader, uint64_t level);
     void grow_crash_recovery();
     void merge_crash_recovery();
-    void detect_lost_chunks();
+    void garbage_collection();
+
+    bool enter_merge(struct Zone_Header *zoneheader);
+    bool leave_merge(struct Zone_Header *zoneheader);
     void swap_freelist(struct Zone_Header *zoneheader, uint64_t level);
     void create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level);
     void do_merge(struct Zone_Header *zoneheader, uint64_t level);

@@ -37,6 +37,8 @@
 #include "nvmm/epoch_manager.h"
 #include "nvmm/log.h"
 
+#include "common/config.h"
+
 #include "common/epoch_shelf.h"
 #include "shelf_usage/epoch_manager_impl.h"
 
@@ -48,12 +50,10 @@ namespace nvmm {
 class EpochManager::Impl_
 {
 public:
-    static std::string const kEpochShelfPath; // path of the epoch shelf
-
     EpochManagerImpl *em;
 
     Impl_()
-        : em(NULL), epoch_shelf_(kEpochShelfPath)
+        : em(NULL), epoch_shelf_(config.EpochShelfPath)
     {
     }
     ~Impl_()
@@ -67,26 +67,24 @@ private:
     EpochShelf epoch_shelf_;
 };
 
-std::string const EpochManager::Impl_::kEpochShelfPath = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_EPOCH";
-
 ErrorCode EpochManager::Impl_::Init()
 {
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
+    boost::filesystem::path shelf_base_path = boost::filesystem::path(config.ShelfBase);
     if (boost::filesystem::exists(shelf_base_path) == false)
     {
-        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << SHELF_BASE_DIR;
+        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << config.ShelfBase;
         exit(1);
     }
 
     if (epoch_shelf_.Exist() == false)
     {
-        LOG(fatal) << "NVMM: Epoch shelf does not exist?" << kEpochShelfPath;
+        LOG(fatal) << "NVMM: Epoch shelf does not exist?" << config.EpochShelfPath;
         exit(1);
     }
 
     if (epoch_shelf_.Open() != NO_ERROR)
     {
-        LOG(fatal) << "NVMM: Epoch shelf open failed..." << kEpochShelfPath;
+        LOG(fatal) << "NVMM: Epoch shelf open failed..." << config.EpochShelfPath;
         exit(1);
     }
 
@@ -104,7 +102,7 @@ ErrorCode EpochManager::Impl_::Final()
     ErrorCode ret = epoch_shelf_.Close();
     if (ret!=NO_ERROR)
     {
-        LOG(fatal) << "NVMM: Epoch shelf close failed" << kEpochShelfPath;
+        LOG(fatal) << "NVMM: Epoch shelf close failed" << config.EpochShelfPath;
         exit(1);
     }
     return ret;
@@ -114,32 +112,6 @@ ErrorCode EpochManager::Impl_::Final()
 /*
  * Public APIs of EpochManager
  */
-void EpochManager::Start() {
-    // Check if SHELF_BASE_DIR exists
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
-    if (boost::filesystem::exists(shelf_base_path) == false)
-    {
-        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << SHELF_BASE_DIR;
-        exit(1);
-    }
-
-    // create a epoch shelf for EpochManager if it does not exist
-    EpochShelf epoch_shelf(EpochManager::Impl_::kEpochShelfPath);
-    if(epoch_shelf.Exist() == false)
-    {
-        ErrorCode ret = epoch_shelf.Create();
-        if (ret!=NO_ERROR && ret != SHELF_FILE_FOUND)
-        {
-            LOG(fatal) << "NVMM: Failed to create the epoch shelf file " << EpochManager::Impl_::kEpochShelfPath;
-            exit(1);
-        }
-    }
-}
-
-void EpochManager::Reset() {
-    std::string cmd = std::string("exec rm -f ") + EpochManager::Impl_::kEpochShelfPath + " > /dev/null";
-    (void)system(cmd.c_str());
-}
 
 // thread-safe Singleton pattern with C++11
 // see http://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/
@@ -150,28 +122,34 @@ EpochManager *EpochManager::GetInstance()
 }
 
 EpochManager::EpochManager()
-    : pimpl_{new Impl_}
 {
-    ErrorCode ret = pimpl_->Init();
-    assert(ret == NO_ERROR);
+    Start();
 }
 
 EpochManager::~EpochManager()
 {
-    ErrorCode ret = pimpl_->Final();
-    assert(ret == NO_ERROR);
+    Stop();
 }
 
-void EpochManager::ResetBeforeFork()
+void EpochManager::Stop()
 {
     ErrorCode ret = pimpl_->Final();
     assert(ret == NO_ERROR);
+    if(pimpl_)
+        delete pimpl_;
 }
 
-void EpochManager::ResetAfterFork()
+void EpochManager::Start()
 {
+    pimpl_ = new Impl_;
+    assert(pimpl_);
     ErrorCode ret = pimpl_->Init();
     assert(ret == NO_ERROR);
+}
+
+void EpochManager::DisableMonitor()
+{
+    pimpl_->em->disable_monitor();
 }
 
 void EpochManager::enter_critical() {
@@ -197,8 +175,17 @@ EpochCounter EpochManager::frontier_epoch() {
     return pimpl_->em->frontier_epoch();
 }
 
+void EpochManager::register_failure_callback(EpochManagerCallback* cb) {
+    return pimpl_->em->register_failure_callback(cb);
+}
+
 void EpochManager::set_debug_level(int level) {
     pimpl_->em->set_debug_level(level);
+}
+
+pid_t EpochManager::self_id()
+{
+    return pimpl_->em->self_id();
 }
 
 } // end namespace nvmm

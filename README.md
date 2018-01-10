@@ -1,6 +1,6 @@
 # Non-Volatile Memory Manager (NVMM)
 
-Author: Yupu Zhang (yupu.zhang@hpe.com)
+Contact: Yupu Zhang (yupu.zhang@hpe.com)
 
 ## Description
 
@@ -21,16 +21,15 @@ shared NVM transparently.
 
 ## Master Source
 
-https://github.hpe.com/labs/nvmm (internal)
-
-https://github.com/HewlettPackard/gull (external)
+https://github.com/HewlettPackard/gull
 
 ## Maturity
 
 NVMM is still in alpha state. The basic functionalities are working, but performance is not
-optimized and crash recovery is still work in progress.
+optimized. 
 
-NVMM runs on both NUMA and FAME systems.
+NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
+ Emulation](https://github.com/HewlettPackard/mdc-toolkit/blob/master/guide-FAME.md)) systems.
 
 ## Dependencies
 
@@ -38,6 +37,11 @@ NVMM runs on both NUMA and FAME systems.
 
   ```
   $ sudo apt-get install build-essential cmake libboost-all-dev
+  ```
+
+  You can specify custom path for libboost by setting an environment variable BOOST_ROOT
+  ```
+  $ export BOOST_ROOT=/opt/usr/local
   ```
 
 - Install libpmem
@@ -48,6 +52,10 @@ NVMM runs on both NUMA and FAME systems.
   $ cd nvml
   $ make
   $ sudo make install
+  
+  You can provide custom directory prefix for installation using DESTDIR variable. For example, to install to directory /opt
+
+  $ sudo make install DESTDIR=/opt
   ```
 
 - Install libfam-atomic
@@ -70,12 +78,6 @@ NVMM runs on both NUMA and FAME systems.
 
 1. Download the source code:
 
- Internal:
- ```
- $ git clone https://github.hpe.com/labs/nvmm.git
- ```
-
- External:
  ```
  $ git clone https://github.com/HewlettPackard/gull.git
  ```
@@ -88,7 +90,7 @@ NVMM runs on both NUMA and FAME systems.
 
 3. Build
 
- On CC-NUMA systems:
+ On CC-NUMA systems (default):
 
  ```
  $ mkdir build
@@ -111,6 +113,10 @@ NVMM runs on both NUMA and FAME systems.
  $ cmake .. -DCMAKE_BUILD_TYPE=Release
  $ cmake .. -DCMAKE_BUILD_TYPE=Debug
  ```
+
+ Other build options include:
+ - LOG: enable (ON) or disable (OFF, default) logging
+ - USE_FAM_ATOMIC: use libfam_atomic (ON) or native atomics (OFF, default)
 
 4. Test
 
@@ -263,6 +269,24 @@ int main(int argc, char **argv)
 }
 ```
 
-## Notes
+## Extension: Epoch-based delayed free
 
-- Crash recovery is still work in progress
+To provide safe sharing of allocated memory in fabric-attached memory without data copying, the
+memory manager is exnteded with epochs using Fraser's algorithm, such that applications can put
+memory allocation, free, and access inside epochs. The memory manager uses a delayed free method to
+deallocate memory; memory will not be reclaimed until after every epoch operation in progress when
+the delayed free is called has finished. The memory manager maintains per-epoch lists of memory
+chunks, and the delayed free method puts a memory chunk into the corresponding per-epoch list. A
+background thread wakes up periodically and frees memory chunks in those per-epoch lists. The number
+of per-epoch free lists is bounded by mapping epochs to free lists in a round robin
+fashion. Examples using the delayed free APIs can be found in test/allocator/test_epoch_zone_heap.cc 
+
+
+## Extension: Crash recovery and garbage collection
+
+A crash during allocation, free, or merge may leak memroy and may also render the memory manager in
+an inconsistent state. Necessary mechanisms are implemented to restore the memory manager state. The
+memory manager provides two recovery APIs: OnlineRecover() and OfflineRecover(). OnlineRecover()
+recovers from crash or failure during merge, and can run concurrently with allocation and
+free. OfflineRecover(), in addition to handling merge failures, performs garbage collection to
+recover leaked memory chunks. It requires exclusive access to the heap. Examples using both APIs can be found in test/allocator/test_epoch_zone_heap_crash.cc

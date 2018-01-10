@@ -214,6 +214,20 @@ bool ShelfHeap::IsValidOffset(Offset offset)
     return zone_->IsValidOffset(offset);
 }
 
+bool ShelfHeap::IsValidPtr(void *addr)
+{
+    assert(IsOpen() == true);
+    if (addr < addr_)
+    {
+        return false;
+    }
+    else
+    {
+        Offset offset = (Offset)((char*)addr - (char*)addr_);
+        return IsValidOffset(offset);
+    }
+}
+
 void *ShelfHeap::OffsetToPtr(Offset offset) const
 {
     assert(IsOpen() == true);
@@ -221,7 +235,7 @@ void *ShelfHeap::OffsetToPtr(Offset offset) const
     return zone_->OffsetToPtr(offset);
 }
 
-Offset ShelfHeap::PtrToOffset(void *addr)
+Offset ShelfHeap::PtrToOffset(void *addr) const
 {
     assert(IsOpen() == true);
     assert(addr>zone_);
@@ -301,10 +315,34 @@ ErrorCode ShelfHeap::UnmapCloseShelf(bool use_shelf_manager, bool unregister)
     {
         return ret;
     }
-        
+
     // close the shelf
     ret = shelf_.Close();
-    return ret;        
+    return ret;
+}
+
+void ShelfHeap::Merge()
+{
+    assert(IsOpen() == true);
+    zone_->merge();
+}
+
+void ShelfHeap::OfflineRecover()
+{
+    assert(IsOpen() == true);
+    zone_->offline_recover();
+}
+
+void ShelfHeap::OnlineRecover()
+{
+    assert(IsOpen() == true);
+    zone_->online_recover();
+}
+
+void ShelfHeap::Stats()
+{
+    assert(IsOpen() == true);
+    zone_->stats();
 }
 
 } // namespace nvmm

@@ -23,12 +23,29 @@
  */
 
 #include <unistd.h> // sleep
+#include <list>
+#include <random>
+#include <limits>
+#include <vector>
+#include <thread>
+#include <chrono>
+
 #include <gtest/gtest.h>
 #include "nvmm/memory_manager.h"
 #include "test_common/test.h"
 
 using namespace nvmm;
 
+// random number and string generator
+std::random_device r;
+std::default_random_engine e1(r());
+uint64_t rand_uint64(uint64_t min=0, uint64_t max=std::numeric_limits<uint64_t>::max())
+{
+    std::uniform_int_distribution<uint64_t> uniform_dist(min, max);
+    return uniform_dist(e1);
+}
+
+// regular free
 TEST(EpochZoneHeap, Free)
 {
     PoolId pool_id = 1;
@@ -62,6 +79,7 @@ TEST(EpochZoneHeap, Free)
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 }
 
+// delayed free
 TEST(EpochZoneHeap, DelayedFree)
 {
     PoolId pool_id = 1;
@@ -136,6 +154,151 @@ TEST(EpochZoneHeap, DelayedFree)
         EXPECT_EQ(ptr1, ptr2);
         heap->Free(ptr2);
     }
+
+    // destroy the heap
+    EXPECT_EQ(NO_ERROR, heap->Close());
+    delete heap;
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
+    EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
+}
+
+// merge
+TEST(EpochZoneHeap, Merge)
+{
+    PoolId pool_id = 1;
+    size_t size = 128*1024*1024LLU; // 128 MB
+
+    MemoryManager *mm = MemoryManager::GetInstance();
+    Heap *heap = NULL;
+
+    // create a heap
+    EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
+    EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
+
+    // get the heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+
+
+    // in unit of 64-byte:
+    // [0, 8) has been allocated to the header
+    // [4096, 8192) has been allocated to the merge bitmap
+
+    uint64_t min_obj_size = heap->MinAllocSize();
+
+    // merge at levels < max_zone_level-2
+    // allocate 64 byte x 24, covering [8, 32)
+    GlobalPtr ptr[24];
+    for(int i=0; i<24; i++) {
+        ptr[i]= heap->Alloc(min_obj_size);
+    }
+    // free 64 byte x 24
+    for(int i=0; i<24; i++) {
+        heap->Free(ptr[i]);
+    }
+
+    // before merge, allocate 1024 bytes
+    GlobalPtr new_ptr = heap->Alloc(16*min_obj_size);
+    EXPECT_EQ(32*min_obj_size, new_ptr.GetOffset());
+
+    // merge
+    heap->Merge();
+
+    // after merge, allocate 1024 bytes
+    new_ptr = heap->Alloc(16*min_obj_size);
+    EXPECT_EQ(16*min_obj_size, new_ptr.GetOffset());
+
+
+    // merge at the last 3 levels
+    // allocate 16MB x 7
+    for(int i=0; i<7; i++) {
+        ptr[i]= heap->Alloc(262144*min_obj_size);
+    }
+    // free 16MB x 7
+    for(int i=0; i<24; i++) {
+        heap->Free(ptr[i]);
+    }
+
+    // before merge, allocate 64MB
+    new_ptr = heap->Alloc(1048576*min_obj_size);
+    EXPECT_EQ(0UL, new_ptr.GetOffset());
+
+    // merge
+    heap->Merge();
+
+    // after merge, allocate 64MB
+    new_ptr = heap->Alloc(1048576*min_obj_size);
+    EXPECT_EQ(1048576*min_obj_size, new_ptr.GetOffset());
+
+    // destroy the heap
+    EXPECT_EQ(NO_ERROR, heap->Close());
+    delete heap;
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
+    EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
+}
+
+void AllocFree(Heap *heap, int cnt) {
+    std::cout << "Thread " << std::this_thread::get_id() << " started" << std::endl;
+    std::list<GlobalPtr> ptrs;
+    for(int i=0; i<cnt; i++) {
+        if(rand_uint64(0,1)==1) {
+            GlobalPtr ptr = heap->Alloc(rand_uint64(0,1024*1024));
+            if(ptr)
+                ptrs.push_back(ptr);
+        }
+        else {
+            if(!ptrs.empty()) {
+                GlobalPtr ptr = ptrs.front();
+                ptrs.pop_front();
+                heap->Free(ptr);
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    for(auto ptr:ptrs) {
+        heap->Free(ptr);
+    }
+    std::cout << "Thread " << std::this_thread::get_id() << " ended" << std::endl;
+}
+
+// merge and concurrent alloc and free
+TEST(EpochZoneHeap, MergeAllocFree)
+{
+    PoolId pool_id = 1;
+    size_t size = 1024*1024*1024LLU; // 1024 MB
+    int thread_cnt = 16;
+    int loop_cnt = 1000;
+
+    MemoryManager *mm = MemoryManager::GetInstance();
+    Heap *heap = NULL;
+
+    // create a heap
+    EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
+    EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
+
+    // get the heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+
+    // start the threads
+    std::vector<std::thread> workers;
+    for(int i=0; i<thread_cnt; i++) {
+        workers.push_back(std::thread(AllocFree, heap, loop_cnt));
+    }
+
+    for(int i=0; i<5; i++) {
+        heap->Merge();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    for (auto &worker:workers) {
+        if(worker.joinable())
+            worker.join();
+    }
+
+    heap->Merge();
 
     // destroy the heap
     EXPECT_EQ(NO_ERROR, heap->Close());

@@ -26,6 +26,7 @@
 #define _NVMM_EPOCH_MANAGER_H_
 
 #include <stdint.h>
+#include <sys/types.h>
 #include <memory>
 
 #include "nvmm/error_code.h"
@@ -35,19 +36,15 @@ namespace nvmm{
 /** Epoch Identifier */
 typedef int64_t EpochCounter;
 
+class EpochManagerCallback {
+public:
+    virtual ~EpochManagerCallback() = 0;
+    virtual void operator()(pid_t id) = 0;
+};
+
 class EpochManager
 {
 public:
-    // Start the epoch manager (creating necessary files to bootstrap the epoch manager)
-    // this function is NOT thread-safe/process-safe
-    // this function must run once and only once in both single-node and multi-node environments,
-    // before the first call to GetInstance()
-    static void Start();
-
-    // Reset the epoch manager (deleting all files)
-    // this function is NOT thread-safe/process-safe
-    // this function can only run when no one is using the epoch manager
-    static void Reset();
 
     // there is only one instance of EpochManager in a process
     // return a pointer to the instance
@@ -57,8 +54,11 @@ public:
     // be careful that there may be other threads using this instance!
     // before forking, stop all the threads; after forking, start all the threads
     // both functions are not thread/process safe
-    void ResetBeforeFork();
-    void ResetAfterFork();
+    void Stop();
+    void Start();
+
+    /** Disable monitor thread */
+    void DisableMonitor();
 
     /** Enter an epoch-protected critical region */
     void enter_critical();
@@ -84,8 +84,12 @@ public:
     /** Return the frontier epoch */
     EpochCounter frontier_epoch();
 
+    void register_failure_callback(EpochManagerCallback* cb);
+
     /** Set debug logging level */
     void set_debug_level(int level);
+
+    pid_t self_id();
 
  private:
 
@@ -93,7 +97,8 @@ public:
     ~EpochManager();
 
     class Impl_;
-    std::unique_ptr<Impl_> pimpl_;
+    //std::unique_ptr<Impl_> pimpl_;
+    Impl_ *pimpl_;
 };
 
 class EpochOp {

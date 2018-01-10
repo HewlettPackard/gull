@@ -42,7 +42,7 @@
 #include "nvmm/log.h"
 
 namespace nvmm {
-    
+
 namespace logging = boost::log;
 namespace sinks = boost::log::sinks;
 namespace src = boost::log::sources;
@@ -51,7 +51,7 @@ namespace attrs = boost::log::attributes;
 namespace keywords = boost::log::keywords;
 
 // the global logger
-boost::log::sources::severity_logger_mt<SeverityLevel> logger(off);
+boost::log::sources::severity_logger_mt<boost::log::trivial::severity_level> logger(boost::log::trivial::severity_level::fatal);
 
 bool log_initialized = false;
 
@@ -59,13 +59,13 @@ bool log_initialized = false;
 BOOST_LOG_ATTRIBUTE_KEYWORD(process_id, "ProcessID", attrs::current_process_id::value_type)
 BOOST_LOG_ATTRIBUTE_KEYWORD(thread_id, "ThreadID", attrs::current_thread_id::value_type)
 BOOST_LOG_ATTRIBUTE_KEYWORD(line_id, "LineID", unsigned int)
-BOOST_LOG_ATTRIBUTE_KEYWORD(severity, "Severity", SeverityLevel)
+BOOST_LOG_ATTRIBUTE_KEYWORD(severity, "Severity", boost::log::trivial::severity_level)
 
-void init_log(SeverityLevel level) {
+void init_log(boost::log::trivial::severity_level level) {
   init_log(level, "output.log");
 }
 
-void init_log(SeverityLevel level, std::string file_name)
+void init_log(boost::log::trivial::severity_level level, std::string file_name)
 {
     if (log_initialized == true)
         return;
@@ -92,8 +92,7 @@ void init_log(SeverityLevel level, std::string file_name)
     logger.add_attribute("ProcessID", attrs::current_process_id());
     logger.add_attribute("ThreadID", attrs::current_thread_id());
     logger.add_attribute("LineID", attrs::counter< unsigned int >(1));
-    
-        
+
     // format log records
     logging::formatter fmt = expr::stream
         // // line id

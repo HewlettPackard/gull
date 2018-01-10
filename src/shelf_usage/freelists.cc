@@ -28,17 +28,13 @@
 #include "nvmm/error_code.h"
 #include "nvmm/global_ptr.h"
 #include "nvmm/shelf_id.h"
-
 #include "nvmm/log.h"
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
+#include "nvmm/fam.h"
 
 #include "common/common.h"
-
-#include "shelf_usage/stack.h"
 #include "shelf_usage/fixed_block_allocator.h"
-
 #include "shelf_usage/freelists.h"
+#include "shelf_usage/stack.h"
 
 namespace nvmm{
 
@@ -100,7 +96,7 @@ ErrorCode FreeLists::Create(size_t list_count)
         return FREELISTS_CREATE_FAILED;
     }
     memset((char*)cur, 0, freelists_size);    
-    pmem_persist(cur, freelists_size);
+    fam_persist(cur, freelists_size);
     
     // create the fixed block allocator
     cur+=freelists_size;
@@ -119,11 +115,11 @@ ErrorCode FreeLists::Create(size_t list_count)
     ((freelists_header*)addr_)->list_count = list_count;
     // set size 
     ((freelists_header*)addr_)->size = header_size + freelists_size + cur_size;
-    pmem_persist(addr_, header_size);
+    fam_persist(addr_, header_size);
     
     // finally set magic number
     ((freelists_header*)addr_)->magic_num = kMagicNum;
-    pmem_persist(addr_, header_size);
+    fam_persist(addr_, header_size);
 
     // update actual size
     size_ = ((freelists_header*)addr_)->size;
@@ -140,7 +136,7 @@ ErrorCode FreeLists::Destroy()
         size_t size = ((freelists_header*)addr_)->size;
         size_ = size;
         memset((char*)addr_, 0, size);    
-        pmem_persist(addr_, size);
+        fam_persist(addr_, size);
         return NO_ERROR;
     }
     else

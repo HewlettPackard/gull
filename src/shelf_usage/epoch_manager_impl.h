@@ -61,6 +61,9 @@ public:
      */
     virtual ~EpochManagerImpl();
 
+    /** Disable monitor thread */
+    void disable_monitor();
+
     /** Enter an epoch-protected critical region */
     void enter_critical();
 
@@ -88,10 +91,12 @@ public:
     /** Set debug logging level */
     void set_debug_level(int level);
 
+    void register_failure_callback(EpochManagerCallback* cb);
 
     EpochManagerImpl(const EpochManagerImpl&)            = delete;
     EpochManagerImpl& operator=(const EpochManagerImpl&) = delete;
 
+    pid_t self_id() { return pid_; }
 
 private:
     /**
@@ -114,8 +119,8 @@ private:
 private:
     static const size_t POOL_SIZE             = 1024*1024; // bytes
     static const size_t MAX_POOL_SIZE         = 1024*1024; // bytes
-    static const size_t MONITOR_INTERVAL_US   = 10;
-    static const size_t HEARTBEAT_INTERVAL_US = 10;
+    static const size_t MONITOR_INTERVAL_US   = 1000; //10;
+    static const size_t HEARTBEAT_INTERVAL_US = 1000; //10;
     static const size_t TIMEOUT_US            = 1000000;
     static const size_t DEBUG_INTERVAL_US     = 1000000;
 
@@ -136,6 +141,8 @@ private:
     std::atomic<bool>                  terminate_heartbeat_;
     int                                debug_level_;
     struct timespec                    last_scan_time_;
+    EpochManagerCallback*              cb_;
+    EpochCounter                       last_frontier_;
 
 };
 

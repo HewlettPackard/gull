@@ -61,10 +61,11 @@ class GlobalPtrClass
     {
 	return (uint64_t)global_ptr_;
     }
-    
+
     inline bool IsValid() const
     {
-	return GetShelfId().IsValid() && IsValidOffset(GetOffset());
+	//return GetShelfId().IsValid() && IsValidOffset(GetOffset());
+        return global_ptr_!=0;
     }
 
     inline static bool IsValidOffset(OffsetT offset)

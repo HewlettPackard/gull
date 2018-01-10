@@ -22,7 +22,7 @@
  *
  */
 
-#include <cstdlib> // for system()
+#include <iostream>
 #include <string>
 #include <unistd.h>
 #include <sys/types.h>
@@ -30,7 +30,6 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <errno.h>
-#include <boost/filesystem/operations.hpp>
 
 #include "nvmm/nvmm_fam_atomic.h"
 #include "nvmm/log.h"
@@ -45,7 +44,7 @@ namespace nvmm {
 
 // TODO: move this to nvmm level
 // NOTE: this function must be run once and only once for every test
-void InitTest(SeverityLevel level, bool to_console)
+void InitTest(boost::log::trivial::severity_level level, bool to_console)
 {
     // init boost::log
     if (to_console == true)
@@ -57,11 +56,8 @@ void InitTest(SeverityLevel level, bool to_console)
         nvmm::init_log(level, "mm.log");
     }
 
-    MemoryManager::Reset();
-    MemoryManager::Start();
-
-    EpochManager::Reset();
-    EpochManager::Start();
+    ResetNVMM();
+    StartNVMM();
 }
 
 } // namespace nvmm

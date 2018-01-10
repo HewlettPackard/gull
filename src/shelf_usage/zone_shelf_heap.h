@@ -65,15 +65,18 @@ public:
     void Free(Offset offset);
 
     bool IsValidOffset(Offset offset);
-    // TODO: not implemented
-    //bool IsValidPtr(void *addr);
+    bool IsValidPtr(void *addr);
 
     void *OffsetToPtr(Offset offset) const;
+    Offset PtrToOffset(void *addr) const ;
 
-    // TODO: not implemented
-    Offset PtrToOffset(void *addr);
+    void Merge();
+    void OfflineRecover();
+    void OnlineRecover();
 
- private:
+    void Stats();
+
+private:
     ErrorCode OpenMapShelf(bool use_shelf_manager=false);
     ErrorCode UnmapCloseShelf(bool use_shelf_manager=false, bool unregister=false);
 

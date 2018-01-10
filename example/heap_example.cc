@@ -32,7 +32,7 @@ using namespace nvmm;
 
 int main(int argc, char **argv)
 {
-    init_log(off); // turn off logging
+    init_log(boost::log::trivial::severity_level::fatal);
 
     MemoryManager *mm = MemoryManager::GetInstance();
 

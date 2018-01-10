@@ -91,8 +91,7 @@ int Init()
     MemoryManager *mm = NULL;
     Heap *heap = NULL;
 
-    EpochManager::Start();
-    MemoryManager::Start();
+    StartNVMM();
 
     // create the global heap if it does not exist
     mm = MemoryManager::GetInstance();
@@ -154,9 +153,7 @@ int Init()
 
 int Cleanup()
 {
-    EpochManager::Reset();
-    MemoryManager::Reset();
-
+    ResetNVMM();
     return 0;
 }
 

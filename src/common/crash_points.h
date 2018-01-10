@@ -22,15 +22,35 @@
  *
  */
 
-#ifndef _NVMM_LIBPMEM_H_
-#define _NVMM_LIBPMEM_H_
+#ifndef _NVMM_CRASH_POINTS_H_
+#define _NVMM_CRASH_POINTS_H_
 
-#include <libpmem.h>
+#include <unordered_map>
+#include <string>
 
 namespace nvmm {
-#ifdef PMEM_INVALIDATE_NOOP
-void pmem_invalidate(void *addr, size_t len);
-#endif
+
+// control knobs to inject crashes at different places
+class CrashPoints {
+public:
+    // there is only one instance of CrashPoints in a process
+    // return a pointer to the instance
+    static CrashPoints *GetInstance();
+
+    // mark a crash point
+    static void CrashHere(std::string location);
+
+    static void EnableCrashPoint(std::string location);
+    static void DisableCrashPoint(std::string location);
+
+
+private:
+    CrashPoints();
+    ~CrashPoints();
+
+    static std::unordered_map<std::string, bool> locations_;
+};
+
 } // namespace nvmm
 
 #endif

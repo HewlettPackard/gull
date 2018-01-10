@@ -32,7 +32,7 @@
 #include "nvmm/global_ptr.h"
 #include "nvmm/shelf_id.h"
 #include "nvmm/heap.h"
-#include "nvmm/nvmm_libpmem.h"
+#include "nvmm/fam.h"
 #include "nvmm/memory_manager.h"
 #include "nvmm/log.h"
 
@@ -94,7 +94,8 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size)
                              [this](ShelfFile *shelf, size_t shelf_size)
                             {
                                 ShelfRegion shelf_region(shelf->GetPath());
-                                return shelf_region.Create(shelf_size);
+                                // TODO: this should be shelf_size/min_obj_size*zone_entry_size
+                                return shelf_region.Create(shelf_size/4);
                             },
                             false
                             );
@@ -134,7 +135,7 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size)
 
         // reserve the 5 global lists for delayed free
         uint64_t reserved = kListCnt * sizeof(ZoneEntryStack);
-        pmem_memset_persist(mapped_addr_, 0, reserved);
+        fam_memset_persist(mapped_addr_, 0, reserved);
 
         // use this region to help create the zone
         header_=(void*)((char*)mapped_addr_+round_up(reserved, kCacheLineSize));
@@ -311,6 +312,10 @@ ErrorCode EpochZoneHeap::Open()
     // get the global freelists
     global_list_ = (ZoneEntryStack*)mapped_addr_;
 
+    // get zone entries
+    uint64_t reserved = round_up(kListCnt * sizeof(ZoneEntryStack), kCacheLineSize);
+    header_=(void*)((char*)mapped_addr_+round_up(reserved, kCacheLineSize));
+
     // get the zone shelf
     ret = pool_.GetShelfPath(kZoneIdx, path);
     if (ret != NO_ERROR)
@@ -319,8 +324,6 @@ ErrorCode EpochZoneHeap::Open()
     }
 
     // open rmb
-    uint64_t reserved = round_up(kListCnt * sizeof(ZoneEntryStack), kCacheLineSize);
-    header_=(void*)((char*)mapped_addr_+round_up(reserved, kCacheLineSize));
     rmb_ = new ShelfHeap(path, ShelfId(pool_id_, kZoneIdx));
     assert (rmb_ != NULL);
     ret = rmb_->Open(header_, region_size_);
@@ -421,13 +424,16 @@ GlobalPtr EpochZoneHeap::Alloc (size_t size)
 {
     assert(IsOpen() == true);
     GlobalPtr ptr;
-    Offset offset = rmb_->Alloc(size);
-    if (rmb_->IsValidOffset(offset) == true)
-    {
-        // this offset has size encoded
-        ptr = GlobalPtr(ShelfId(pool_id_, kZoneIdx), offset);
+    Offset offset;
+    int retry_cnt=1000;
+    do {
+        offset = rmb_->Alloc(size);
     }
-    return ptr;
+    while(rmb_->IsValidOffset(offset) == false && retry_cnt--);
+    //ptr = GlobalPtr(ShelfId(pool_id_, kZoneIdx), offset);
+    //return ptr;
+    if(offset==0) return 0;
+    else return GlobalPtr(ShelfId(pool_id_, kZoneIdx), offset);
 }
 
 void EpochZoneHeap::Free(GlobalPtr global_ptr)
@@ -556,9 +562,46 @@ void EpochZoneHeap::BackgroundWorker()
                 LOG(trace) << " freeing block [" << offset << "]";
                 rmb_->Free(offset);
             }
+            //std::cout << " in total " << i << " blocks have been freed" << std::endl;
             LOG(trace) << " in total " << i << " blocks have been freed";
         }
     }
+}
+
+size_t EpochZoneHeap::MinAllocSize()
+{
+    return rmb_->MinAllocSize();
+}
+
+void EpochZoneHeap::Merge()
+{
+    assert(IsOpen() == true);
+    return rmb_->Merge();
+}
+
+void EpochZoneHeap::OfflineRecover()
+{
+    assert(IsOpen() == true);
+    return rmb_->OfflineRecover();
+}
+
+void EpochZoneHeap::OnlineRecover()
+{
+    assert(IsOpen() == true);
+    return rmb_->OnlineRecover();
+}
+
+void EpochZoneHeap::Stats()
+{
+    assert(IsOpen() == true);
+    return rmb_->Stats();
+}
+
+void EpochZoneHeap::OfflineFree()
+{
+    assert(IsOpen() == true);
+    // temperary increase freecnt
+    kFreeCnt = 1000000;
 }
 
 } // namespace nvmm

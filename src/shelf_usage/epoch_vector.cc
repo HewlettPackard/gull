@@ -28,7 +28,7 @@
 #include <sstream>
 #include <time.h>
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 
 #include "shelf_usage/epoch_vector.h"
 #include "shelf_usage/epoch_vector_internal.h"
@@ -120,6 +120,12 @@ int _EpochVector::acquire_slot(ParticipantID pid) {
 
 void _EpochVector::release_slot(int slot_id) {
     _EpochVectorSlot value(PID_NO_PARTICIPANT, EPOCH_NO_PARTICIPANT);
+    // FIXME: this should be a CAS instead to ensure that if multiple 
+    // recovery participants try to release the slot only one succeeds
+    // and prevent the race when a first recovery process releases the 
+    // slot, then a new participant grabs the slot the slot, and then a 
+    // second recovery process resets the slot. A CAS would prevent this
+    // as participants register by writing their ID and ID is unique. 
     fam_atomic_128_write(slot_[slot_id].i64, value.i64);
 }
 

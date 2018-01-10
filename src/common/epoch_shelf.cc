@@ -34,7 +34,7 @@
 
 #include "nvmm/error_code.h"
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "nvmm/log.h"
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h" // for PoolId

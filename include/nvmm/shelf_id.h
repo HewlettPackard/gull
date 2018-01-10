@@ -81,8 +81,7 @@ public:
     {
         return
             (GetPoolId()<kMaxPoolCount) &&
-            (GetShelfIndex()<kMaxShelfCount) &&
-            (shelf_id_ != kInvalidShelfId);
+            (GetShelfIndex()<kMaxShelfCount) && (shelf_id_ != kInvalidShelfId);
     }
     
     inline PoolIdT GetPoolId() const

@@ -40,7 +40,7 @@
 #include "nvmm/global_ptr.h"
 #include "common/common.h"
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "common/common.h"
 
 #include "shelf_usage/smart_shelf.h"

@@ -394,6 +394,7 @@ TEST(MemoryManager, MultiThreadStressTest)
 // multi-process
 void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
 {
+    std::cout << "START" << std::endl;
     // open the comm
     std::string path = shelf_name.Path(comm_shelf_id);
     ShelfFile shelf(path);
@@ -405,10 +406,6 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
     EXPECT_EQ(NO_ERROR, comm.Open());    
 
 
-    // =======================================================================
-    // reset epoch manager after fork()
-    EpochManager *em = EpochManager::GetInstance();
-    em->ResetAfterFork();
     
     // =======================================================================    
     // get the existing heap
@@ -440,6 +437,7 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
         }
         else
         {
+            //std::cout << "Alloc succeeded" << std::endl;
             uint64_t *uint_ptr = (uint64_t*)mm->GlobalToLocal(ptr);
             EXPECT_EQ(ptr, mm->LocalToGlobal(uint_ptr));
             EXPECT_TRUE(uint_ptr != NULL);
@@ -455,7 +453,9 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
     // close the comm
     EXPECT_EQ(NO_ERROR, comm.Close());
     EXPECT_EQ(NO_ERROR, shelf.Unmap(address, length));
-    EXPECT_EQ(NO_ERROR, shelf.Close());            
+    EXPECT_EQ(NO_ERROR, shelf.Close());
+
+    std::cout << "DONE" << std::endl;
 }
 
 TEST(MemoryManager, MultiProcessHeap)
@@ -489,14 +489,13 @@ TEST(MemoryManager, MultiProcessHeap)
     // =======================================================================
     // reset epoch manager before fork()
     EpochManager *em = EpochManager::GetInstance();
-    em->ResetBeforeFork();
-
-    
     pid_t pid[process_count];
 
     for (int i=0; i< process_count; i++)
     {
+        em->Stop();
         pid[i] = fork();
+        em->Start();
         ASSERT_LE(0, pid[i]);
         if (pid[i]==0)
         {
@@ -521,9 +520,6 @@ TEST(MemoryManager, MultiProcessHeap)
     // destroy the heap
     EXPECT_EQ(NO_ERROR, mm->DestroyHeap(heap_pool_id));
 
-    // =======================================================================
-    // reset epoch manager after fork() for the main process
-    em->ResetAfterFork();
 
     // =======================================================================
     // destroy the shelf for communication

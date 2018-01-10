@@ -22,10 +22,43 @@
  *
  */
 
-#include "nvmm/nvmm_libpmem.h"
+#ifndef NVMM_CONFIG_H
+#define NVMM_CONFIG_H
+
+#include <cstddef> // size_t
+#include <iostream>
+#include <assert.h>
+#include <string>
 
 namespace nvmm {
-#ifdef PMEM_INVALIDATE_NOOP
-void pmem_invalidate(void *addr, size_t len){}
-#endif
+
+class Config {
+public:
+    Config(std::string base=SHELF_BASE_DIR, std::string user=SHELF_USER)
+        : ShelfBase(base), ShelfUser(user) {
+        if(base.empty()) ShelfBase = SHELF_BASE_DIR;
+        if(user.empty()) ShelfUser = SHELF_USER;
+        Setup();
+    }
+
+    ~Config() {}
+
+    int LoadConfigFile(std::string path);
+    void PrintConfigFile(std::string path);
+    void Print();
+
+    void Setup();
+
+    std::string ShelfBase;
+    std::string ShelfUser;
+
+    std::string RootShelfPath;
+    std::string EpochShelfPath;
+};
+
+//TODO: global instance for now
+extern Config config;
+
 } // namespace nvmm
+
+#endif

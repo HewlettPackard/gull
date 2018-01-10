@@ -31,8 +31,7 @@
 #include "nvmm/global_ptr.h"
 #include "shelf_usage/smart_shelf.h"
 
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
+#include "nvmm/fam.h"
 
 #include "shelf_usage/zone_entry_stack.h"
 #include "shelf_usage/zone_entry.h"

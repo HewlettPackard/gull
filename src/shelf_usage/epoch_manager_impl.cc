@@ -8,7 +8,7 @@
 #include <thread>
 #include <unistd.h>
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "nvmm/epoch_manager.h"
 
 #include "shelf_usage/participant_manager.h"
@@ -19,6 +19,10 @@
 using nvmm::internal::EpochVector;
 
 namespace nvmm {
+
+EpochManagerCallback::~EpochManagerCallback() {
+    // Empty abstract destructor
+};
 
 class HeartBeat {
 public:
@@ -35,7 +39,9 @@ EpochManagerImpl::EpochManagerImpl(void *addr, bool may_create) :
     active_epoch_count_(0),
     terminate_monitor_(false),
     terminate_heartbeat_(false),
-    debug_level_(0)
+    debug_level_(0),
+    cb_(NULL),
+    last_frontier_(0)
 {
     epoch_vec_ = new EpochVector(&*metadata_pool_, may_create);
 
@@ -69,14 +75,39 @@ EpochManagerImpl::EpochManagerImpl(void *addr, bool may_create) :
 
 
 EpochManagerImpl::~EpochManagerImpl() {
-    terminate_monitor_ = true;
-    terminate_heartbeat_ = true;
-    monitor_thread_.join();
-    heartbeat_thread_.join();
+    bool join_monitor = false;
+    bool join_heartbeat = false;
+    
+    // first signal all threads we want to terminate
+    if (!terminate_monitor_) {
+        terminate_monitor_ = true;
+        join_monitor = true;
+    }
+    if (!terminate_heartbeat_) {
+        terminate_heartbeat_ = true;
+        join_heartbeat = true;
+    }
+
+    // now join terminating threads 
+    if (join_monitor) {
+        monitor_thread_.join();
+    }
+    if (join_heartbeat) {
+        heartbeat_thread_.join();
+    }
+
     epoch_participant_.unregister();
     delete epoch_vec_;
 }
 
+// This is not thread safe
+void EpochManagerImpl::disable_monitor()
+{
+    if (!terminate_monitor_) {
+        terminate_monitor_ = true;
+        monitor_thread_.join();
+    }
+}
 
 EpochCounter EpochManagerImpl::reported_epoch() {
     return epoch_participant_.reported();
@@ -146,8 +177,23 @@ bool EpochManagerImpl::advance_frontier()
     }
     
     last_scan_time_ = internal::get_hrtime();
-
+    
     EpochCounter frontier = epoch_vec_->frontier();
+
+    // If we have seen a change in the frontier since the last time we run
+    // then that means all active participants made progress and unresponsive
+    // ones were killed. We should invalidate all our cache timestamps of 
+    // to ensure we don't kill any participant who didn't get the chance to
+    // report the new frontier change right after the frontier changed
+    // (this can happen when an unresponsive participant was holding back
+    // active participants, and participants don't get the chance to report
+    // the new change, but they are seen as having viewed the previous frontier
+    // at some past time and therefore get killed)
+    if (frontier != last_frontier_) {
+        epoch_vec_->refresh_modified_time();
+    }
+    last_frontier_ = frontier;
+
     bool have_x_lock = false;
     for (EpochVector::Iterator it = epoch_vec_->begin();
          it != epoch_vec_->end(); 
@@ -184,6 +230,14 @@ bool EpochManagerImpl::advance_frontier()
         }
     }
 
+    // We choose to let all active participants kill dead participants, regardeless of
+    // whether they successfully advanced the frontier. This requires
+    // the user to ensure that recovery actions are atomic and idempotent since 
+    // multiple participants may invoke recovery. 
+    // Alternative explanation: By definition, if we find dead participants then we don't 
+    // advance the frontier before we kill the likely dead participants. So essentially 
+    // recovery is done when we don't advance the frontier. We have no way however when 
+    // none advances the frontier.
     if (likely_dead.size() > 0) {
         for (std::vector<EpochVector::Participant>::iterator it = likely_dead.begin();
              it != likely_dead.end();
@@ -204,6 +258,14 @@ bool EpochManagerImpl::advance_frontier()
                 }
             } catch (std::exception& e) {
                 std::cerr << e.what() << std::endl;
+            }
+            // Call the failure callback before we unregister the detected failed participant
+            // so that if we fail, someone else can detect the failed participant and invoke
+            // any necessary callbacks. Careful though as multiple epoch managers may detect
+            // failure and invoke callbacks concurrently. User is responsible for guaranteeing
+            // atomicity.
+            if (cb_) {
+                (*cb_)(ptc.id());
             }
             ptc.unregister();
         }
@@ -243,7 +305,7 @@ void EpochManagerImpl::monitor_thread_entry() {
  */
 void EpochManagerImpl::heartbeat_thread_entry() {
     while (!terminate_heartbeat_) {
-        assert(usleep(HEARTBEAT_INTERVAL_US)==0);
+        usleep(HEARTBEAT_INTERVAL_US);
         // Grab exclusive lock to effectively drain active epochs and prevent
         // new epoch operations from occuring so that we can update and report 
         // our local view of the frontier
@@ -258,6 +320,10 @@ void EpochManagerImpl::heartbeat_thread_entry() {
 
 void EpochManagerImpl::set_debug_level(int level) {
     debug_level_ = level;
+}
+
+void EpochManagerImpl::register_failure_callback(EpochManagerCallback* cb) {
+    cb_ = cb;
 }
 
 } // end namespace nvmm

@@ -23,7 +23,7 @@
  */
 
 #include <memory>
-
+#include <iostream>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -40,10 +40,13 @@
 #include "nvmm/region.h"
 
 #include "nvmm/log.h"
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "nvmm/memory_manager.h"
 
+#include "common/config.h"
+
 #include "common/root_shelf.h"
+#include "common/epoch_shelf.h"
 #include "shelf_mgmt/shelf_manager.h"
 #include "allocator/pool_region.h"
 #ifdef ZONE
@@ -54,16 +57,108 @@
 
 namespace nvmm {
 
+// void Init(std::string config_file) {
+//     int ret = config.LoadConfigFile(config_file);
+//     if(ret!=0) {
+//         std::cout << "NVMM: failed to load the config_file at " << config_file << std::endl;
+//         return;
+//     }
+//     if (boost::filesystem::exists(config.ShelfBase) == false)
+//     {
+//         if(boost::filesystem::create_directory(config.ShelfBase) == false) {
+//             std::cout << "NVMM: failed to create shelf base dir at " << config.ShelfBase << std::endl;
+//         }
+//     }
+// }
+
+// TODO: remove these global instances and static classes
+// memory manager and epoch manager
+// Config config in config.cc
+// ShelfManager in shelf_manager.h
+void StartNVMM(std::string base, std::string user) {
+    if(!base.empty() || !user.empty())
+        config=Config(base, user);
+
+    if (boost::filesystem::exists(config.ShelfBase) == false)
+    {
+        if(boost::filesystem::create_directory(config.ShelfBase) == false) {
+            std::cout << "NVMM: failed to create shelf base dir at " << config.ShelfBase << std::endl;
+        }
+    }
+
+    // Check if shelf base exists
+    boost::filesystem::path shelf_base_path = boost::filesystem::path(config.ShelfBase);
+    if (boost::filesystem::exists(shelf_base_path) == false)
+    {
+        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << config.ShelfBase;
+        exit(1);
+    }
+
+    // create a root shelf for MemoryManager if it does not exist
+    RootShelf root_shelf(config.RootShelfPath);
+    if(root_shelf.Exist() == false)
+    {
+        ErrorCode ret = root_shelf.Create();
+        if (ret!=NO_ERROR && ret != SHELF_FILE_FOUND)
+        {
+            LOG(fatal) << "NVMM: Failed to create the root shelf file " << config.RootShelfPath;
+            exit(1);
+        }
+    }
+
+    // create a epoch shelf for EpochManager if it does not exist
+    EpochShelf epoch_shelf(config.EpochShelfPath);
+    if(epoch_shelf.Exist() == false)
+    {
+        ErrorCode ret = epoch_shelf.Create();
+        if (ret!=NO_ERROR && ret != SHELF_FILE_FOUND)
+        {
+            LOG(fatal) << "NVMM: Failed to create the epoch shelf file " << config.EpochShelfPath;
+            exit(1);
+        }
+    }
+}
+
+void ResetNVMM(std::string base, std::string user) {
+    if(!base.empty() || !user.empty())
+        config=Config(base, user);
+
+    std::string cmd;
+
+    // remove memory manager root shelf
+    cmd = std::string("exec rm -f ") + config.RootShelfPath + " > /dev/null";
+    (void)system(cmd.c_str());
+
+    // remove epoch manager root shelf
+    cmd = std::string("exec rm -f ") + config.EpochShelfPath + " > /dev/null";
+    (void)system(cmd.c_str());
+
+    // remove previous files in shelf base
+    cmd = std::string("exec rm -f ") + config.ShelfBase + "/" + config.ShelfUser + "_NVMM_Shelf* > /dev/null";
+    (void)system(cmd.c_str());
+}
+
+void RestartNVMM(std::string base, std::string user) {
+    EpochManager::GetInstance()->Stop();
+    MemoryManager::GetInstance()->Stop();
+
+    // DO NOT remove previous shelves
+    //ResetNVMM(); // reset with existing config
+    StartNVMM(base, user); // start using the new config
+
+    MemoryManager::GetInstance()->Start();
+    EpochManager::GetInstance()->Start();
+}
+
+
 /*
  * Internal implementation of MemoryManager
  */
 class MemoryManager::Impl_
 {
 public:
-    static std::string const kRootShelfPath; // path of the root shelf
-
     Impl_()
-        : is_ready_(false), root_shelf_(kRootShelfPath), locks_(NULL), types_(NULL)
+        : is_ready_(false), root_shelf_(config.RootShelfPath), locks_(NULL), types_(NULL)
     {
     }
 
@@ -135,26 +230,24 @@ private:
     PoolTypeEntry *types_; // store pool types
 };
 
-std::string const MemoryManager::Impl_::kRootShelfPath = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_ROOT";
-
 ErrorCode MemoryManager::Impl_::Init()
 {
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
+    boost::filesystem::path shelf_base_path = boost::filesystem::path(config.ShelfBase);
     if (boost::filesystem::exists(shelf_base_path) == false)
     {
-        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << SHELF_BASE_DIR;
+        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << config.ShelfBase;
         exit(1);
     }
 
     if (root_shelf_.Exist() == false)
     {
-        LOG(fatal) << "NVMM: Root shelf does not exist?" << kRootShelfPath;
+        LOG(fatal) << "NVMM: Root shelf does not exist?" << config.RootShelfPath;
         exit(1);
     }
 
     if (root_shelf_.Open() != NO_ERROR)
     {
-        LOG(fatal) << "NVMM: Root shelf open failed..." << kRootShelfPath;
+        LOG(fatal) << "NVMM: Root shelf open failed..." << config.RootShelfPath;
         exit(1);
     }
 
@@ -169,7 +262,7 @@ ErrorCode MemoryManager::Impl_::Final()
     ErrorCode ret = root_shelf_.Close();
     if (ret!=NO_ERROR)
     {
-        LOG(fatal) << "NVMM: Root shelf close failed" << kRootShelfPath;
+        LOG(fatal) << "NVMM: Root shelf close failed" << config.RootShelfPath;
         exit(1);
     }
 
@@ -514,7 +607,7 @@ void *MemoryManager::Impl_::GlobalToLocal(GlobalPtr ptr)
         LOG(error) << "MemoryManager: Invalid Global Pointer: " << ptr;
         return NULL;
     }
-    
+
     ErrorCode ret = NO_ERROR;
     ShelfId shelf_id = ptr.GetShelfId();
     Offset offset = ptr.GetOffset();
@@ -522,7 +615,7 @@ void *MemoryManager::Impl_::GlobalToLocal(GlobalPtr ptr)
     if (addr == NULL)
     {
         // slow path
-        // first time accessing this shelf        
+        // first time accessing this shelf
         PoolId pool_id = shelf_id.GetPoolId();
         if (pool_id == 0)
         {
@@ -539,7 +632,7 @@ void *MemoryManager::Impl_::GlobalToLocal(GlobalPtr ptr)
         }
 
         ShelfIndex shelf_idx = shelf_id.GetShelfIndex();
-        std::string shelf_path;    
+        std::string shelf_path;
         ret = pool.GetShelfPath(shelf_idx, shelf_path);
         if (ret != NO_ERROR)
         {
@@ -549,7 +642,7 @@ void *MemoryManager::Impl_::GlobalToLocal(GlobalPtr ptr)
         addr = ShelfManager::FindBase(shelf_path, shelf_id);
 
         // close the pool
-        (void) pool.Close(false);        
+        (void) pool.Close(false);
     }
 
     if (addr != NULL)
@@ -559,7 +652,7 @@ void *MemoryManager::Impl_::GlobalToLocal(GlobalPtr ptr)
                    << " offset " << offset
                    << " returned ptr " << (uintptr_t)addr;
     }
-    
+
     return addr;
 }
 
@@ -590,37 +683,6 @@ GlobalPtr MemoryManager::Impl_::LocalToGlobal(void *addr)
  * Public APIs of MemoryManager
  */
 
-void MemoryManager::Start() {
-    // Check if SHELF_BASE_DIR exists
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
-    if (boost::filesystem::exists(shelf_base_path) == false)
-    {
-        LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << SHELF_BASE_DIR;
-        exit(1);
-    }
-
-    // create a root shelf for MemoryManager if it does not exist
-    RootShelf root_shelf(MemoryManager::Impl_::kRootShelfPath);
-    if(root_shelf.Exist() == false)
-    {
-        ErrorCode ret = root_shelf.Create();
-        if (ret!=NO_ERROR && ret != SHELF_FILE_FOUND)
-        {
-            LOG(fatal) << "NVMM: Failed to create the root shelf file " << MemoryManager::Impl_::kRootShelfPath;
-            exit(1);
-        }
-    }
-}
-
-void MemoryManager::Reset() {
-    std::string cmd = std::string("exec rm -f ") + MemoryManager::Impl_::kRootShelfPath + " > /dev/null";
-    (void)system(cmd.c_str());
-
-    // remove previous files in SHELF_BASE_DIR
-    cmd = std::string("exec rm -f ") + SHELF_BASE_DIR + "/" + SHELF_USER + "_NVMM_Shelf* > /dev/null";
-    (void)system(cmd.c_str());
-}
-
 // thread-safe Singleton pattern with C++11
 // see http://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/
 MemoryManager *MemoryManager::GetInstance()
@@ -630,17 +692,30 @@ MemoryManager *MemoryManager::GetInstance()
 }
 
 MemoryManager::MemoryManager()
-    : pimpl_{new Impl_}
 {
-    ErrorCode ret = pimpl_->Init();
-    assert(ret == NO_ERROR);
+    Start();
 }
 
 MemoryManager::~MemoryManager()
 {
+    Stop();
+}
+
+void MemoryManager::Stop()
+{
     ErrorCode ret = pimpl_->Final();
     assert(ret == NO_ERROR);
-}   
+    if(pimpl_)
+        delete pimpl_;
+}
+
+void MemoryManager::Start()
+{
+    pimpl_ = new Impl_;
+    assert(pimpl_);
+    ErrorCode ret = pimpl_->Init();
+    assert(ret == NO_ERROR);
+}
 
 ErrorCode MemoryManager::CreateRegion(PoolId id, size_t size)
 {
@@ -651,7 +726,7 @@ ErrorCode MemoryManager::DestroyRegion(PoolId id)
 {
     return pimpl_->DestroyRegion(id);
 }
-    
+
 ErrorCode MemoryManager::FindRegion(PoolId id, Region **region)
 {
     return pimpl_->FindRegion(id, region);
@@ -660,8 +735,8 @@ ErrorCode MemoryManager::FindRegion(PoolId id, Region **region)
 Region *MemoryManager::FindRegion(PoolId id)
 {
     return pimpl_->FindRegion(id);
-}   
-    
+}
+
 ErrorCode MemoryManager::CreateHeap(PoolId id, size_t size)
 {
     return pimpl_->CreateHeap(id, size);
@@ -671,7 +746,7 @@ ErrorCode MemoryManager::DestroyHeap(PoolId id)
 {
     return pimpl_->DestroyHeap(id);
 }
-    
+
 ErrorCode MemoryManager::FindHeap(PoolId id, Heap **heap)
 {
     return pimpl_->FindHeap(id, heap);
@@ -680,17 +755,16 @@ ErrorCode MemoryManager::FindHeap(PoolId id, Heap **heap)
 Heap *MemoryManager::FindHeap(PoolId id)
 {
     return pimpl_->FindHeap(id);
-}   
+}
 
 ErrorCode MemoryManager::MapPointer(GlobalPtr ptr, size_t size,
                                     void *addr_hint, int prot, int flags, void **mapped_addr)
 {
     return pimpl_->MapPointer(ptr, size, addr_hint, prot, flags, mapped_addr);
 }
-    
 
 ErrorCode MemoryManager::UnmapPointer(GlobalPtr ptr, void *mapped_addr, size_t size)
-{ 
+{
     return pimpl_->UnmapPointer(ptr, mapped_addr, size);
 }
 
@@ -703,6 +777,5 @@ GlobalPtr MemoryManager::LocalToGlobal(void *addr)
 {
     return pimpl_->LocalToGlobal(addr);
 }
-    
 
 } // namespace nvmm
