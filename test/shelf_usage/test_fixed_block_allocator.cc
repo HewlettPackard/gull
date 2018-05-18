@@ -26,7 +26,8 @@
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 
 #include <gtest/gtest.h>
-#include <fam_atomic.h>
+
+#include "nvmm/nvmm_fam_atomic.h"
 
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h"

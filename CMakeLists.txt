@@ -1,5 +1,11 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 2.8.11)
 project(nvmm)
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 #
 # default system include and link directories
@@ -9,14 +15,10 @@ include_directories(/usr/include)
 link_directories(/usr/local/lib)
 include_directories(/usr/local/include)
 
-
 #
 # build type: Release (default) or Debug
 #
 message(STATUS "====================")
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "Release")
-endif()
 if(CMAKE_BUILD_TYPE MATCHES Debug)
   message(STATUS "Build type: Debug")
 elseif(CMAKE_BUILD_TYPE MATCHES Release)
@@ -26,6 +28,7 @@ else()
   message(STATUS "Default to : Release")
   set(CMAKE_BUILD_TYPE "Release")
 endif()
+
 #
 # determine endianness at compile time
 #
@@ -77,19 +80,53 @@ else()
 endif()
 
 #
-# looking for pmem_invalidate()
+# enable logging
 #
-find_library(NVML_PATH libpmem.so)
-execute_process (
-  COMMAND bash -c "readelf -a ${NVML_PATH} | grep pmem_invalidate"
-  OUTPUT_VARIABLE result
-  )
-if (result STREQUAL "")
-  add_definitions(-DPMEM_INVALIDATE_NOOP)
-  message(STATUS "libpmem: pmem_invalidate() is noop")
+if(LOG)
+  message(STATUS "logging: on")
+  add_definitions(-DPRINT_LOG)
 else()
-  message(STATUS "libpmem: pmem_invalidate() is supported")
+  message(STATUS "logging: off")
 endif()
+
+#
+# add libpmem  
+#
+find_package(Pmem REQUIRED)
+
+set(ARCH_LIBS ${ARCH_LIBS} ${PMEM_LIBRARY})
+
+if(NOT PMEM_HAS_PMEM_INVALIDATE)
+  add_definitions(-DPMEM_INVALIDATE_NOOP)
+endif()
+
+#
+# use libfam_atomic?
+#
+if(USE_FAM_ATOMIC)
+  message(STATUS "atomics library: FAM")
+  find_package(FamAtomic REQUIRED)
+  set(ARCH_LIBS ${ARCH_LIBS} ${FAM_ATOMIC_LIBRARY})
+else()
+  message(STATUS "atomics library: native")
+  add_definitions(-DFAM_ATOMIC_NATIVE)
+endif()
+
+#
+# add boost
+#
+set(BOOST_ROOT $ENV{BOOST_ROOT})
+find_package(Boost 1.55 COMPONENTS log log_setup thread system filesystem REQUIRED)
+if(Boost_FOUND)
+  include_directories(${Boost_INCLUDE_DIRS})
+  link_directories(${Boost_LIBRARY_DIR})
+  #message(STATUS "${Boost_INCLUDE_DIR}")
+  #message(STATUS "${Boost_LIBRARY_DIR}")       
+endif()
+
+
+# for boost::log
+add_definitions(-DBOOST_LOG_DYN_LINK)
 
 message(STATUS "====================")
 
@@ -98,7 +135,7 @@ message(STATUS "====================")
 #
 set(CMAKE_CXX_FLAGS "-std=c++11")
 set(CMAKE_CXX_FLAGS
-  "${CMAKE_CXX_FLAGS} -Wall -W -Wextra -Wredundant-decls -Wunused -Wunused-macros -Wno-unused-parameter -Wcast-qual -Wcast-align -Wwrite-strings -Wmissing-field-initializers -Wendif-labels -Winit-self -Wlogical-op -Wpacked -Wstack-protector -Wformat=2 -Wswitch-enum -Wstrict-overflow=5 -Wpointer-arith -Wnormalized=nfc -Wno-long-long -Wswitch-default -Wconversion -Wunreachable-code")  
+  "${CMAKE_CXX_FLAGS} -Wall -W -Wextra -Wredundant-decls -Wunused -Wunused-macros -Wno-unused-parameter -Wcast-qual -Wcast-align -Wwrite-strings -Wmissing-field-initializers -Wendif-labels -Winit-self -Wlogical-op -Wpacked -Wstack-protector -Wformat=2 -Wswitch-enum -Wstrict-overflow=5 -Wpointer-arith -Wnormalized=nfc -Wno-long-long -Wconversion -Wunreachable-code")  
 
 # Flags that are currently not used: -Wshadow -Wpadded
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-invalid-offsetof ") # to suppress warnings about offsetof
@@ -106,31 +143,17 @@ set(CMAKE_CXX_FLAGS
 #
 # gcc flags for release build
 #
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -g -O2")
 
 #
 # gcc flags for debug build
 #
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -DDEBUG -Og")
-
-#
-# add libpmem and lib_fam_atomic
-#
-set(ARCH_LIBS pmem fam_atomic)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -DDEBUG -Og -g")
 
 #
 # enable GTest
 #
 enable_testing()
-
-#
-# enable boost
-#
-find_package(Boost 1.55 COMPONENTS log REQUIRED)
-
-# for boost::log
-add_definitions(-DBOOST_LOG_DYN_LINK)
-
 
 #
 # include directories
@@ -144,8 +167,10 @@ include_directories(${PROJECT_SOURCE_DIR}/test) # test headers (test)
 #
 set(GTEST_ROOT ${PROJECT_SOURCE_DIR}/third-party/gtest)
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+
 add_subdirectory(third-party)
 include_directories(${PROJECT_SOURCE_DIR}/third-party/gtest/include)
+include_directories(${PROJECT_SOURCE_DIR}/third-party/yaml-cpp-release-0.5.3/include)
 
 #
 # add source code
@@ -157,19 +182,11 @@ add_subdirectory(src)
 #
 
 # create base shelf dir
-if(FAME) # FAME
-  add_custom_target(
-  nvmm_shelf_base_dir
-  COMMAND ${CMAKE_COMMAND} -E echo ${SHELF_BASE_DIR}
-  COMMENT show shelf base dir for nvmm
-)
-else() # NUMA
-  add_custom_target(
+add_custom_target(
   nvmm_shelf_base_dir
   COMMAND ${CMAKE_COMMAND} -E make_directory ${SHELF_BASE_DIR}
   COMMENT create shelf base dir for nvmm
 )
-endif()
 
 add_subdirectory(test)
 add_subdirectory(demo)

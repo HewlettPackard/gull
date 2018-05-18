@@ -35,17 +35,22 @@ namespace nvmm {
 class Zone {
 public:
     Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
-			size_t max_pool_size);
+	 size_t max_pool_size, void *helper, size_t helper_size);
 
-    Zone(void *addr, size_t max_pool_size);
+    Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size);
 
-    virtual ~Zone() {}
+    ~Zone();
 
     // returns 0 if no blocks are currently available
     Offset alloc(size_t size);
     // [unsafe_]free(0) is a no-op
-    void     free       (Offset block);
-    void     start_merge();
+    void free(Offset block);
+    void merge();
+    void offline_recover(); // grow, merge, and garbage collection; must run offline
+    void online_recover(); // merge; can run online
+
+    // TODO
+    // void recover_online(); // for grow
 
     // TODO
     // requires all writes to block block have already been persisted
@@ -55,15 +60,23 @@ public:
 
     // converting between external Offset (with size encoded) and local-address-space pointers
     void*    OffsetToPtr(Offset p);
-    // TODO
-    //Offset PtrToOffset (void*    p);
+    Offset PtrToOffset (void*    p);
+
+    // for delayed free
+    uint64_t min_obj_size();
 
     Zone(const Zone&)            = delete;
     Zone& operator=(const Zone&) = delete;
 
+    // debugging
+    void print_bitmap();
+    void print_freelist();
+    void stats();
 
-private:
+ private:
     char *shelf_location_ptr;
+    char *header_ptr;
+    size_t header_size;
 
     // shortcut for from_Offset; does not work well on Zone*:
     //   need (*fba)[ptr] for that case
@@ -76,13 +89,17 @@ private:
     bool grow();
     bool is_grow_in_progress(struct Zone_Header *zoneheader);
     bool is_merge_in_progress(struct Zone_Header *zoneheader);
+    uint64_t get_level(struct Zone_Header *zoneheader, Offset ptr);
     void modify_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr, bool set);
     void set_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr);
     void reset_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr);
     bool merge(struct Zone_Header *zoneheader, uint64_t level);
     void grow_crash_recovery();
     void merge_crash_recovery();
-    void detect_lost_chunks();
+    void garbage_collection();
+
+    bool enter_merge(struct Zone_Header *zoneheader);
+    bool leave_merge(struct Zone_Header *zoneheader);
     void swap_freelist(struct Zone_Header *zoneheader, uint64_t level);
     void create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level);
     void do_merge(struct Zone_Header *zoneheader, uint64_t level);

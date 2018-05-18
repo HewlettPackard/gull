@@ -26,8 +26,6 @@
 #define _NVMM_MEMORY_MANAGER_H_
 
 #include <memory>
-#include <atomic>
-#include <mutex>
 
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h" // for PoolId
@@ -38,17 +36,49 @@
 
 namespace nvmm{
 
+// Global bootstrapping functions for NVMM
+
+
+// config nvmm such that shelves will be created at base/, and with user as prefix to each shelf
+// Create necessary files to bootstrap the memory manager and epoch manager
+// file name
+// this function is NOT thread-safe/process-safe
+// this function must run once and only once in both single-node and multi-node environments,
+// before the first call to GetInstance()
+void StartNVMM(std::string base="", std::string user="");
+
+// Delete all previous shelves, resetting both the memory manager and epoch manager
+// this function is NOT thread-safe/process-safe
+// this function can only run when no one is using the memory manager
+void ResetNVMM(std::string base="", std::string user="");
+
+// Restart current memory manager and epoch manager instances
+// used when one wants to switch to another base/user or wants to fork()
+// this will stop current instances, remove all existing shelves, change base and user if necessary,
+// and finally starting from fresh
+// this function assumes that there is already a running NVMM instance; it can only be called after NVMM has been bootstrapped
+void RestartNVMM(std::string base="", std::string user="");
+
+
+
 // TODO: Current limitation:
-// - No type check for an existing pool id (mm does not know if specified pool is a Heap or a Region)
 // - No pool-id management/assignment (clients of mm must agree upon a set of pool ids that each
-// wants to use, e.g., 1 and 2 for item store, 3 for metadata store, etc) 
+// wants to use, e.g., 1 and 2 for item store, 3 for metadata store, etc)
 // - No multi-process support for pool (heap/region) creation and destroy
 class MemoryManager
 {
 public:
-    // there is only one instance of mm in a process
-    // return the instance
+
+    // there is only one instance of MemoryManager in a process
+    // return a pointer to the instance
     static MemoryManager *GetInstance();
+
+    // helper functions to make it work with fork
+    // be careful that there may be other threads using this instance!
+    // before forking, stop all the threads; after forking, start all the threads
+    // both functions are not thread/process safe
+    void Start();
+    void Stop();
 
     /*
        methods to access a global pointer with its size known
@@ -66,8 +96,8 @@ public:
     */
     void *GlobalToLocal(GlobalPtr ptr);
     GlobalPtr LocalToGlobal(void *addr);
-    
-    /* 
+
+    /*
        a heap provides Alloc/Free APIs
     */
     // Create a heap with the given id
@@ -75,7 +105,7 @@ public:
     // Return
     // - NO_ERROR: heap was created
     // - ID_FOUND: the given id is in use
-    ErrorCode CreateHeap(PoolId id, size_t shelf_size); 
+    ErrorCode CreateHeap(PoolId id, size_t shelf_size);
 
     // Destroy the heap with the given id
     // Return
@@ -100,7 +130,6 @@ public:
     // Caller is responsible for freeing the poitner
     // Return NULL if heap of the given id is not found
     Heap *FindHeap(PoolId id);
-    
 
     /*
       a region provides direct memory mapping APIs
@@ -109,7 +138,7 @@ public:
     // Return
     // - NO_ERROR: region was created
     // - ID_FOUND: the given id is in use
-    ErrorCode CreateRegion(PoolId id, size_t size); 
+    ErrorCode CreateRegion(PoolId id, size_t size);
 
     // Destroy the region with the given id
     // Return
@@ -134,17 +163,15 @@ public:
     // Caller is responsible for freeing the poitner
     // Return NULL if region of the given id is not found
     Region *FindRegion(PoolId id);
-    
+
 private:
-    static std::atomic<MemoryManager*> instance_;
-    static std::mutex mutex_;
-    
+
     MemoryManager();
     ~MemoryManager();
-    
-    class Impl_;        
-    std::unique_ptr<Impl_> pimpl_;
-    
+
+    class Impl_;
+    //std::unique_ptr<Impl_> pimpl_;
+    Impl_ *pimpl_;
 };
-} // namespace nvmm   
+} // namespace nvmm
 #endif

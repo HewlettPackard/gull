@@ -80,10 +80,7 @@ public:
     static PoolId const kMetadataPoolId = 0; // pool 0 is reserved to store system-wide metadata;
                                              // e.g., the pool membership is stored in pool 0 
 
-    // convert shelf ids to shelf names
-    static ShelfName shelf_name_; 
-    
-    
+
     Pool() = delete;
     Pool(PoolId pool_id);
     ~Pool();
@@ -198,29 +195,32 @@ private:
     Version RandForAddShelf();
     
     // helper function for Pool::Recover()
-    static bool RemoveOldShelfFiles(PoolId pool_id, ShelfIndex shelf_idx, Version version);
+    bool RemoveOldShelfFiles(PoolId pool_id, ShelfIndex shelf_idx, Version version);
 
     // default format functions
-    static ErrorCode DefaultFormatFn(ShelfFile *shelf, size_t shelf_size);
-    static ErrorCode TruncateShelfFile(ShelfFile *shelf, size_t shelf_size);
+    ErrorCode DefaultFormatFn(ShelfFile *shelf, size_t shelf_size);
+    ErrorCode TruncateShelfFile(ShelfFile *shelf, size_t shelf_size);
 
     ErrorCode OpenMapMetadataShelf();
     ErrorCode UnmapCloseMetadataShelf();
-    
+
+    // convert shelf ids to shelf names
+    ShelfName shelf_name_;
 
     PoolId pool_id_;
-    bool is_open_;    
+    bool is_open_;
 
     // the private shelf to store pool-wide metadata
     ShelfFile metadata_shelf_;
     void *addr_;
     size_t size_; // size of the metadata_shelf
-    
+
     // pool-wide metadata
     size_t shelf_size_; // stored at addr_ (aligned to CACHE_LINE_SIZE)
     Membership *membership_; // stored at addr_ + CACHE_LINE_SIZE
 
     pthread_rwlock_t  rwlock_; // guard concurrent access to the pool
+
 };
 
 } // namespace nvmm

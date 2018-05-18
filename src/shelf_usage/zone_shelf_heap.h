@@ -36,51 +36,57 @@
 namespace nvmm {
 
 class Zone;
-    
-// based on zone::GlobalHeap
+
 class ShelfHeap
 {
 public:
     ShelfHeap() = delete;
     // the shelf file must already exist
-    ShelfHeap(std::string pathname);    
-    ShelfHeap(std::string pathname, ShelfId shelf_id);    
+    ShelfHeap(std::string pathname);
+    ShelfHeap(std::string pathname, ShelfId shelf_id);
     ~ShelfHeap();
 
-    ErrorCode Create(size_t size);        
-    ErrorCode Destroy();    
+    ErrorCode Create(size_t size, void *helper, size_t helper_size);
+    ErrorCode Destroy();
     ErrorCode Verify();
     ErrorCode Recover();
-    
+
     bool IsOpen() const
     {
         return is_open_;
     }
-    
-    ErrorCode Open();    
+
+    ErrorCode Open(void *helper, size_t helper_size);
     ErrorCode Close();
     size_t Size();
+    size_t MinAllocSize();
 
     Offset Alloc(size_t size);
     void Free(Offset offset);
 
     bool IsValidOffset(Offset offset);
-    // TODO: not implemented
-    //bool IsValidPtr(void *addr); 
-    
-    void *OffsetToPtr(Offset offset) const;
+    bool IsValidPtr(void *addr);
 
-    // TODO: not implemented    
-    Offset PtrToOffset(void *addr);
-        
+    void *OffsetToPtr(Offset offset) const;
+    Offset PtrToOffset(void *addr) const ;
+
+    void Merge();
+    void OfflineRecover();
+    void OnlineRecover();
+
+    void Stats();
+
 private:
     ErrorCode OpenMapShelf(bool use_shelf_manager=false);
-    ErrorCode UnmapCloseShelf(bool use_shelf_manager=false, bool unregister=false);  
+    ErrorCode UnmapCloseShelf(bool use_shelf_manager=false, bool unregister=false);
 
     bool is_open_;
     ShelfFile shelf_;
     void *addr_;
-    
+
+    void *helper_;
+    size_t helper_size_;
+
     Zone *zone_;
 };
 

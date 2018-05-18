@@ -40,7 +40,7 @@
 #include "nvmm/global_ptr.h"
 #include "common/common.h"
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "common/common.h"
 
 #include "shelf_usage/smart_shelf.h"
@@ -91,9 +91,9 @@ static std::string strerror_as_string(int error) {
     return std::string(result);
 }
 
-IOError::IOError(int error_no) : 
-    runtime_error(std::string("I/O error: ") + strerror_as_string(error_no)), 
-    error_no(error_no) 
+IOError::IOError(int error_no) :
+    runtime_error(std::string("I/O error: ") + strerror_as_string(error_no)),
+    error_no(error_no)
 {};
 
 
@@ -116,7 +116,7 @@ int64_t cas64(int64_t* target, int64_t old_value, int64_t new_value) {
 /* SmartShelf_                                                                  */
 /*                                                                         */
 /***************************************************************************/
-SmartShelf_::SmartShelf_(void *addr, size_t fixed_section_size, 
+SmartShelf_::SmartShelf_(void *addr, size_t fixed_section_size,
                size_t max_shelf_size) {
     max_shelf_size = round_up(max_shelf_size, kVirtualPageSize);
     start = kCacheLineSize + fixed_section_size;
@@ -144,7 +144,7 @@ SmartShelf_::SmartShelf_(void *addr, size_t fixed_section_size,
         throw std::runtime_error("Shelf has different maximum size from one specified");
     }
 }
-                   
+
 SmartShelf_::~SmartShelf_()
 {
 }

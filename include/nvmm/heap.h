@@ -27,8 +27,9 @@
 
 #include "nvmm/error_code.h"
 #include "nvmm/global_ptr.h"
+#include "nvmm/epoch_manager.h"
 
-namespace nvmm{
+namespace nvmm {
 
 class Heap
 {
@@ -38,10 +39,20 @@ public:
     virtual ErrorCode Open() = 0;
     virtual ErrorCode Close() = 0;
     virtual bool IsOpen() = 0;
-    
+
     virtual GlobalPtr Alloc (size_t size) = 0;
     virtual void Free (GlobalPtr global_ptr) = 0;
+
+    virtual GlobalPtr Alloc (EpochOp &op, size_t size){return (GlobalPtr)0;};
+    virtual void Free (EpochOp &op, GlobalPtr global_ptr){};
+
+    virtual size_t MinAllocSize(){return 0;};
+    virtual void Merge (){};
+    virtual void OfflineRecover (){};
+    virtual void OnlineRecover (){};
+    virtual void Stats (){};
+    virtual void OfflineFree (){};
 };
-    
+
 } // namespace nvmm
 #endif

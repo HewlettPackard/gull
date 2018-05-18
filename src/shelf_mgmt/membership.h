@@ -36,8 +36,7 @@
 
 #include "nvmm/error_code.h"
 #include "nvmm/log.h"
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
+#include "nvmm/fam.h"
 
 #include "common/common.h"
 
@@ -47,16 +46,17 @@ namespace nvmm {
 // shelf size)
 struct membership_header
 {
-    uint64_t magic_num;
-    size_t size; // size of the header and the items
-    size_t item_count;
+    alignas(8) uint64_t magic_num;
+    alignas(8) size_t size; // size of the header and the items
+    alignas(8) size_t item_count;
+    uint64_t  padding;
 };
 
 // cacheline-aligned TypeT
 template<class TypeT>
 struct CacheLine
 {
-    TypeT value __attribute__((__aligned__(kCacheLineSize)));
+    TypeT value __attribute__((__aligned__(CACHE_LINE_SIZE)));
 
     TypeT *Address()
     {
@@ -129,18 +129,18 @@ public:
             return MEMBERSHIP_CREATE_FAILED;
         }
         memset((char*)cur, 0, items_size);    
-        pmem_persist(cur, items_size);
+        fam_persist(cur, items_size);
 
         // set header
         // set item_count
         ((membership_header*)addr_)->item_count = item_count;
         // set size of header and the items
         ((membership_header*)addr_)->size = header_size + items_size;    
-        pmem_persist(addr_, header_size);
+        fam_persist(addr_, header_size);
     
         // finally set magic number
         ((membership_header*)addr_)->magic_num = kMagicNum;
-        pmem_persist(addr_, header_size);
+        fam_persist(addr_, header_size);
 
         // update actual size
         size_ = ((membership_header*)addr_)->size;
@@ -158,7 +158,7 @@ public:
             size_t size = ((membership_header*)addr_)->size;
             size_ = size;
             memset((char*)addr_, 0, size);    
-            pmem_persist(addr_, size);
+            fam_persist(addr_, size);
             return NO_ERROR;
         }
         else

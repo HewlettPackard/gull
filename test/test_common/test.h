@@ -29,7 +29,7 @@
 
 namespace nvmm {
 
-void InitTest(SeverityLevel level=nvmm::fatal, bool to_console = false);
+void InitTest(boost::log::trivial::severity_level level=boost::log::trivial::severity_level::fatal, bool to_console = false);
 
 } // namespace nvmm
     

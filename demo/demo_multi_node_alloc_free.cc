@@ -22,6 +22,7 @@
  *
  */
 
+#include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <fcntl.h> // for O_RDWR
@@ -39,7 +40,6 @@
 #include "nvmm/log.h"
 #include "nvmm/error_code.h"
 #include "nvmm/memory_manager.h"
-#include "nvmm/root_shelf.h"
 
 #include "allocator/dist_heap.h"
 #include "shelf_usage/freelists.h"
@@ -91,27 +91,7 @@ int Init()
     MemoryManager *mm = NULL;
     Heap *heap = NULL;
 
-    // check if SHELF_BASE_DIR exists
-    std::cout << "Init: Checking if lfs exists..." << std::endl;
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(SHELF_BASE_DIR);
-    if (boost::filesystem::exists(shelf_base_path) == false)
-    {
-        std::cout << "Init: LFS does not exist " << SHELF_BASE_DIR << std::endl;
-        exit(1);
-    }
-
-    // create a root shelf for MemoryManager if it does not exist
-    std::cout << "Init: Creating the root shelf if it does not exist..." << std::endl;
-    std::string root_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_ROOT";
-    RootShelf root_shelf(root_shelf_file);
-    if(root_shelf.Exist() == false)
-    {
-        if(root_shelf.Create()!=NO_ERROR)
-        {
-            std::cout << "Init: Failed to create the root shelf file " << root_shelf_file << std::endl;
-            exit(1);
-        }
-    }
+    StartNVMM();
 
     // create the global heap if it does not exist
     mm = MemoryManager::GetInstance();
@@ -173,13 +153,8 @@ int Init()
 
 int Cleanup()
 {
-    // init boost::log
-    nvmm::init_log(nvmm::fatal, "mm.log");
-    // remove previous files in SHELF_BASE_DIR
-    std::cout << "Cleanup: Removing all NVMM files in " << SHELF_BASE_DIR << std::endl;
-    std::string cmd = std::string("exec rm -f ") + SHELF_BASE_DIR + "/" + SHELF_USER + "* > /dev/null";
-    //std::cout << cmd << std::endl;
-    return system(cmd.c_str());
+    ResetNVMM();
+    return 0;
 }
 
 int RunA()
@@ -381,4 +356,3 @@ int main(int argc, char **argv)
         return RunB();
     }
 }
-

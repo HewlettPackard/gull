@@ -100,9 +100,9 @@ void *ShelfManager::LookupShelf(ShelfId shelf_id)
     
 void *ShelfManager::FindBase(ShelfId shelf_id)
 {
-    ShelfManager::Lock();
+    //ShelfManager::Lock();
     void *ret = LookupShelf(shelf_id);
-    ShelfManager::Unlock();
+    //ShelfManager::Unlock();
     return ret;
 }
 

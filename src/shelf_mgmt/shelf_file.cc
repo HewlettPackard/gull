@@ -36,7 +36,7 @@
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h"
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "nvmm/log.h"
 
 #include "shelf_mgmt/shelf_manager.h"

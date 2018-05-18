@@ -22,15 +22,17 @@
  *
  */
 
-#ifndef _NVMM_CONVMMON_H_
-#define _NVMM_CONVMMON_H_
+#ifndef _NVMM_COMMON_H_
+#define _NVMM_COMMON_H_
 
 namespace nvmm {
 
 /*
  * System-specific parameters
  */
-static int const kCacheLineSize = 64;
+#define CACHE_LINE_SIZE 64
+
+static int const kCacheLineSize = CACHE_LINE_SIZE;
 static int const kVirtualPageSize = 64*1024;
 
 /*

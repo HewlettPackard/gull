@@ -28,12 +28,10 @@
 
 #include <assert.h>
 
+#include "nvmm/fam.h"
 #include "nvmm/global_ptr.h"
+
 #include "shelf_usage/smart_shelf.h"
-
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
-
 #include "shelf_usage/stack.h"
 
 namespace nvmm {

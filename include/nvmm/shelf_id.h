@@ -71,12 +71,17 @@ public:
     {
     }
 
+
+    operator uint64_t() const
+    {
+	return (uint64_t)shelf_id_;
+    }
+
     inline bool IsValid() const
     {
         return
             (GetPoolId()<kMaxPoolCount) &&
-            (GetShelfIndex()<kMaxShelfCount) &&
-            (shelf_id_ != kInvalidShelfId);
+            (GetShelfIndex()<kMaxShelfCount) && (shelf_id_ != kInvalidShelfId);
     }
     
     inline PoolIdT GetPoolId() const

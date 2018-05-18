@@ -47,7 +47,7 @@ namespace nvmm {
  **/
 struct Stack {
     // we access the following two fields atomically via 128-bit CAS:
-    Offset head __attribute__ ((aligned (16)));
+    alignas(16) Offset head;
     uint64_t  aba_counter;  // incremented each time head is written
 
     // returns 0 if stack is empty

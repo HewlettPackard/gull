@@ -27,6 +27,7 @@
 #include <string>
 #include <functional>
 #include <pthread.h>
+#include <iostream>
 
 #include <assert.h>
 #include <fcntl.h> // for O_RDWR
@@ -38,10 +39,11 @@
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h"
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "nvmm/log.h"
 
 #include "common/common.h"
+#include "common/config.h"
 
 #include "shelf_mgmt/shelf_name.h"
 #include "shelf_mgmt/shelf_file.h"
@@ -51,12 +53,9 @@
 
 namespace nvmm {
 
-// TODO: make SHELF_BASE_DIR and this file prefix string configurable in MemoryManager
-// right now SHELF_BASE_DIR is defined in the root CMakeLists.txt
-ShelfName Pool::shelf_name_=ShelfName(SHELF_BASE_DIR, "NVMM_Shelf");
-
 Pool::Pool(PoolId pool_id)
-    : pool_id_{pool_id}, is_open_{false},
+    : shelf_name_(config.ShelfBase, "NVMM_Shelf"),
+      pool_id_{pool_id}, is_open_{false},
       metadata_shelf_{shelf_name_.Path(ShelfId(kMetadataPoolId, (ShelfIndex)pool_id))},
       addr_{NULL},
       membership_{NULL}
@@ -453,7 +452,7 @@ ErrorCode Pool::NewShelf(ShelfIndex &shelf_idx)
         return POOL_CLOSED;
     }
     return NewShelf(shelf_idx,
-                    [](ShelfFile* shelf, size_t size)
+                    [this](ShelfFile* shelf, size_t size)
                     {                        
                         return TruncateShelfFile(shelf, size);
                     }
@@ -467,7 +466,7 @@ ErrorCode Pool::AddShelf(ShelfIndex &shelf_idx, bool assign_diff_shelf_idx)
         return POOL_CLOSED;
     }
     return AddShelf(shelf_idx,
-                    [](ShelfFile* shelf, size_t size)
+                    [this](ShelfFile* shelf, size_t size)
                     {
                         return TruncateShelfFile(shelf, size);
                     },
@@ -806,7 +805,7 @@ bool Pool::RemoveOldShelfFiles(PoolId pool_id_, ShelfIndex shelf_idx, Version ve
     std::string prefix = shelf_name_.Path(shelf_id) + "_";
     std::string const suffix = "add";
 
-    boost::filesystem::path base_path = boost::filesystem::path(SHELF_BASE_DIR);
+    boost::filesystem::path base_path = boost::filesystem::path(config.ShelfBase);
     boost::filesystem::directory_iterator end_iter;
     for (boost::filesystem::directory_iterator dir_itr(base_path);
          dir_itr != end_iter;

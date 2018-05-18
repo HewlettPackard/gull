@@ -30,7 +30,7 @@
 #include <fcntl.h> // for O_RDWR
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 
-#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/fam.h"
 #include "nvmm/nvmm_libpmem.h"
 
 #include "nvmm/error_code.h"

@@ -31,11 +31,10 @@
 #include <assert.h> // for assert()
 #include <string>
 
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
-
+#include "nvmm/fam.h"
 #include "nvmm/error_code.h"
 #include "nvmm/global_ptr.h"
+
 #include "common/common.h"
 #include "shelf_mgmt/shelf_file.h"
 
@@ -54,9 +53,9 @@ struct NvHeapLayout
         layout->next_free = kMetadataSize;
         layout->heap_size = heap_size;
         memset(layout->data, 0, layout->heap_size);
-        pmem_persist((void*)(&layout->heap_size), kCacheLineSize*2+layout->heap_size);
+        fam_persist((void*)(&layout->heap_size), kCacheLineSize*2+layout->heap_size);
         layout->magic_num = kMagicNum;        
-        pmem_persist((void*)(&layout->magic_num), kCacheLineSize);
+        fam_persist((void*)(&layout->magic_num), kCacheLineSize);
     }
 
     static void Destroy (void *address)
@@ -69,9 +68,9 @@ struct NvHeapLayout
         layout->next_free = 0;
         layout->heap_size = 0;
         memset(layout->data, 0, heap_size);
-        pmem_persist((void*)(&layout->heap_size), kCacheLineSize*2+layout->heap_size);
+        fam_persist((void*)(&layout->heap_size), kCacheLineSize*2+layout->heap_size);
         layout->magic_num = 0;
-        pmem_persist((void*)(&layout->magic_num), kCacheLineSize);
+        fam_persist((void*)(&layout->magic_num), kCacheLineSize);
     }
 
     static bool Verify (void *address)

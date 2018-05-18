@@ -52,7 +52,7 @@ public:
     // std::runtime error (existing file incompatible with passed parameters)
     SmartShelf_(void *addr, size_t fixed_section_size, size_t max_shelf_size);
     ~SmartShelf_();
-    
+
     /*
      * Valid Offset's for the variable section of this Shelf are 0
      * (NULL equivalent) and start_ptr() .. size()-1.

@@ -35,8 +35,7 @@
 #include "nvmm/error_code.h"
 #include "nvmm/global_ptr.h"
 #include "nvmm/shelf_id.h"
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/nvmm_libpmem.h"
+#include "nvmm/fam.h"
 #include "nvmm/heap.h"
 
 #include "shelf_mgmt/pool.h"
@@ -143,7 +142,7 @@ private:
     // for the background cleaner thread
     std::thread cleaner_thread_;
     std::mutex cleaner_mutex_;
-    bool cleaner_running_;    
+    bool cleaner_running_;
     bool cleaner_stop_;
 
     // TODO: gather freespace stats

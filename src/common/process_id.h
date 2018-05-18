@@ -66,7 +66,7 @@ public:
 
 private:
     uint64_t GetBtime(uint64_t pid);
-    
+
     uint64_t pid_; 
     uint64_t btime_; // creation time (number of jiffies since the machine booted)
 };
