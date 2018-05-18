@@ -20,10 +20,6 @@ using nvmm::internal::EpochVector;
 
 namespace nvmm {
 
-EpochManagerCallback::~EpochManagerCallback() {
-    // Empty abstract destructor
-};
-
 class HeartBeat {
 public:
     HeartBeat()
@@ -265,7 +261,7 @@ bool EpochManagerImpl::advance_frontier()
             // failure and invoke callbacks concurrently. User is responsible for guaranteeing
             // atomicity.
             if (cb_) {
-                (*cb_)(ptc.id());
+                cb_(ptc.id());
             }
             ptc.unregister();
         }
@@ -322,8 +318,14 @@ void EpochManagerImpl::set_debug_level(int level) {
     debug_level_ = level;
 }
 
-void EpochManagerImpl::register_failure_callback(EpochManagerCallback* cb) {
+void EpochManagerImpl::register_failure_callback(EpochManagerCallback cb) {
     cb_ = cb;
 }
+
+void EpochManagerImpl::reset_vector() {
+    epoch_vec_->reset();
+}
+
+
 
 } // end namespace nvmm

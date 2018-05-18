@@ -91,12 +91,14 @@ public:
     /** Set debug logging level */
     void set_debug_level(int level);
 
-    void register_failure_callback(EpochManagerCallback* cb);
+    void register_failure_callback(EpochManagerCallback cb);
 
     EpochManagerImpl(const EpochManagerImpl&)            = delete;
     EpochManagerImpl& operator=(const EpochManagerImpl&) = delete;
 
     pid_t self_id() { return pid_; }
+
+    void reset_vector();
 
 private:
     /**
@@ -141,7 +143,7 @@ private:
     std::atomic<bool>                  terminate_heartbeat_;
     int                                debug_level_;
     struct timespec                    last_scan_time_;
-    EpochManagerCallback*              cb_;
+    EpochManagerCallback               cb_;
     EpochCounter                       last_frontier_;
 
 };

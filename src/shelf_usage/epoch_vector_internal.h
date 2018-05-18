@@ -125,6 +125,9 @@ public:
     /** Release slot */
     void release_slot(int slot_id);
 
+    /** Reset vector contents to zero */
+    void reset();
+
 private:
     /** The frontier epoch counter. */
     EpochCounter      frontier_;

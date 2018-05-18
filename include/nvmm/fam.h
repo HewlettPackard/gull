@@ -38,6 +38,16 @@ void fam_persist(const void *addr, size_t len);
 
 void* fam_memset_persist(void *pmemdest, int c, size_t len);
 
+void *fam_memcpy(void *dest, const void *src, size_t n);
+
+int fam_memcmp(const void *s1, const void *s2, size_t n);
+
+int64_t fam_read_64(const void *addr);
+
+void fam_read_128(const void *addr, int64_t val[2]);
+
+void fam_fence();
+
 #ifdef __cplusplus
 }
 #endif

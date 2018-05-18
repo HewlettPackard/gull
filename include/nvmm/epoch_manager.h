@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <memory>
+#include <functional>
 
 #include "nvmm/error_code.h"
 
@@ -36,11 +37,7 @@ namespace nvmm{
 /** Epoch Identifier */
 typedef int64_t EpochCounter;
 
-class EpochManagerCallback {
-public:
-    virtual ~EpochManagerCallback() = 0;
-    virtual void operator()(pid_t id) = 0;
-};
+typedef std::function<void(pid_t)> EpochManagerCallback;
 
 class EpochManager
 {
@@ -84,12 +81,14 @@ public:
     /** Return the frontier epoch */
     EpochCounter frontier_epoch();
 
-    void register_failure_callback(EpochManagerCallback* cb);
+    void register_failure_callback(EpochManagerCallback cb);
 
     /** Set debug logging level */
     void set_debug_level(int level);
 
     pid_t self_id();
+
+    void reset_vector();
 
  private:
 

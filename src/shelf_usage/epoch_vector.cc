@@ -129,6 +129,12 @@ void _EpochVector::release_slot(int slot_id) {
     fam_atomic_128_write(slot_[slot_id].i64, value.i64);
 }
 
+void _EpochVector::reset() {
+    fam_atomic_128_write(&frontier_, 0);
+    for (int i=0; i<NR_PARTICIPANT; i++) {
+        fam_atomic_128_write(slot_[i].i64, 0);
+    }
+}
 
 /*
  * EpochVector
@@ -253,6 +259,10 @@ std::string EpochVector::to_string()
     return ss.str();
 }
 
+void EpochVector::reset()
+{
+    ev_->reset();
+}
 
 /*
  * EpochVector::Iterator

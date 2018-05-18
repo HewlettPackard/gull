@@ -90,6 +90,9 @@ public:
 
     std::string to_string();
 
+    /** Reset epoch vector */
+    void reset();
+
 private:
     ParticipantID pid(int slot);
     EpochCounter reported(int slot);

@@ -29,7 +29,7 @@
 #include "nvmm/global_ptr.h"
 #include "nvmm/epoch_manager.h"
 
-namespace nvmm{
+namespace nvmm {
 
 class Heap
 {

@@ -49,10 +49,10 @@ void init_log(boost::log::trivial::severity_level level, std::string file_name);
 
 #ifdef PRINT_LOG
 #define LOG(severity) \
-    BOOST_LOG_SEV(logger, boost::log::trivial::severity) << "(" << __FILE__ << ":" << __LINE__ << ") "
+    BOOST_LOG_SEV(nvmm::logger, boost::log::trivial::severity) << "(" << __FILE__ << ":" << __LINE__ << ") "
 
 #define TRACE() \
-    BOOST_LOG_SEV(logger, boost::log::trivial::trace) << "(" << __FILE__ << ":" << __LINE__ << ") " << __PRETTY_FUNCTION__
+    BOOST_LOG_SEV(nvmm::logger, boost::log::trivial::trace) << "(" << __FILE__ << ":" << __LINE__ << ") " << __PRETTY_FUNCTION__
 #else
 #define LOG(severity) if(0)std::cerr
 #define TRACE() {}

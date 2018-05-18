@@ -175,12 +175,17 @@ EpochCounter EpochManager::frontier_epoch() {
     return pimpl_->em->frontier_epoch();
 }
 
-void EpochManager::register_failure_callback(EpochManagerCallback* cb) {
+void EpochManager::register_failure_callback(EpochManagerCallback cb) {
     return pimpl_->em->register_failure_callback(cb);
 }
 
 void EpochManager::set_debug_level(int level) {
     pimpl_->em->set_debug_level(level);
+}
+
+void EpochManager::reset_vector()
+{
+    pimpl_->em->reset_vector();
 }
 
 pid_t EpochManager::self_id()
