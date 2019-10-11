@@ -86,13 +86,15 @@ public:
     ~Pool();
 
     // pool
-    ErrorCode Create(size_t shelf_size=kShelfSize);
+    ErrorCode Create(size_t shelf_size=kShelfSize,mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     ErrorCode Destroy();
     bool Exist();
     bool Verify();
     
     ErrorCode Open(bool recover);
     ErrorCode Close(bool recover);
+
+    ErrorCode SetPermission(mode_t mode);
 
     bool IsOpen()
     {
@@ -138,7 +140,7 @@ public:
     // allocate a new shelf, try our best to assign it the specified shelf_idx, and add the shelf to
     // the pool
     // if the specified shelf_idx is not available, assign a new one when assign_diff_shelf_idx == true
-    ErrorCode AddShelf(ShelfIndex &shelf_idx, FormatFn format_func, bool assign_diff_shelf_idx = true);
+    ErrorCode AddShelf(ShelfIndex &shelf_idx, FormatFn format_func, bool assign_diff_shelf_idx=true, mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     
     // remove the speicified shelf from the pool, and delete the shelf
     // NOTE: caller must make sure the shelf is not being used by others 
@@ -146,6 +148,9 @@ public:
 
     // locate the next available shelf in the pool between start_idx (inclusive) and end_idx (inclusive)
     bool FindNextShelf(ShelfIndex &shelf_idx, ShelfIndex start_idx, ShelfIndex end_idx=kMaxShelfCount-1);
+
+    // Find the next free shelf
+    ErrorCode FindNextFreeShelf(ShelfIndex &shelf_idx);
     
     // check if the specified shelf is in the pool    
     bool CheckShelf(ShelfIndex shelf_idx); 
@@ -201,6 +206,7 @@ private:
     ErrorCode DefaultFormatFn(ShelfFile *shelf, size_t shelf_size);
     ErrorCode TruncateShelfFile(ShelfFile *shelf, size_t shelf_size);
 
+    ErrorCode SetPermMetadataShelf(mode_t mode);
     ErrorCode OpenMapMetadataShelf();
     ErrorCode UnmapCloseMetadataShelf();
 

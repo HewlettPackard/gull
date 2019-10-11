@@ -46,6 +46,9 @@ namespace nvmm {
 // NOTE: this function must be run once and only once for every test
 void InitTest(boost::log::trivial::severity_level level, bool to_console)
 {
+#ifdef LFSWORKAROUND
+    sleep(10);
+#endif
     // init boost::log
     if (to_console == true)
     {

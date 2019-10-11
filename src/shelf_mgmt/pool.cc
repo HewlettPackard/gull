@@ -56,7 +56,11 @@ namespace nvmm {
 Pool::Pool(PoolId pool_id)
     : shelf_name_(config.ShelfBase, "NVMM_Shelf"),
       pool_id_{pool_id}, is_open_{false},
+      #ifdef ZONE
+      metadata_shelf_{shelf_name_.Path(std::to_string(kMetadataPoolId)+"_"+std::to_string(pool_id))},
+      #else
       metadata_shelf_{shelf_name_.Path(ShelfId(kMetadataPoolId, (ShelfIndex)pool_id))},
+      #endif
       addr_{NULL},
       membership_{NULL}
 {
@@ -69,7 +73,7 @@ Pool::~Pool()
 {    
 }
 
-ErrorCode Pool::Create(size_t shelf_size)
+ErrorCode Pool::Create(size_t shelf_size, mode_t mode)
 {
     TRACE();
     ErrorCode ret = NO_ERROR;
@@ -87,7 +91,7 @@ ErrorCode Pool::Create(size_t shelf_size)
     //     return POOL_CREATE_FAILED;
     // }
     
-    ret = metadata_shelf_.Create(S_IRUSR | S_IWUSR, kMetadataShelfSize);
+    ret = metadata_shelf_.Create(mode, kMetadataShelfSize);
     if (ret != NO_ERROR)
     {
         if (ret == SHELF_FILE_FOUND)
@@ -330,6 +334,17 @@ ErrorCode Pool::Close(bool recover)
     return ret;
 }
 
+ErrorCode Pool::SetPermission(mode_t mode)
+{
+    TRACE();
+    if (IsOpen() == false)
+    {
+        return POOL_CLOSED;
+    }
+
+    return SetPermMetadataShelf(mode);  
+}
+
 // RETURN:
 // - NO_ERROR: no inconsistency was found
 // - POOL_INCONSISTENCY_FOUND: there was inconsistency
@@ -489,14 +504,16 @@ ErrorCode Pool::NewShelf(ShelfIndex &shelf_idx, FormatFn format_func)
 // - NO_ERROR: the shelf now exists, and the shelf was created by us; the actual assigned shelf_idx
 // is returned 
 // - POOL_ADD_SHELF_FAILED: failed to add the shelf 
-ErrorCode Pool::AddShelf(ShelfIndex &shelf_idx, FormatFn format_func, bool assign_diff_shelf_idx)
+ErrorCode Pool::AddShelf(ShelfIndex &shelf_idx, FormatFn format_func, bool assign_diff_shelf_idx, mode_t mode)
 {
     TRACE();
     if (IsOpen() == false)
     {
         return POOL_CLOSED;
     }
-    assert(kMaxShelfCount > shelf_idx);
+    if(shelf_idx >= kMaxShelfCount) {
+       return POOL_ADD_SHELF_FAILED;
+    }
 
     ErrorCode ret = NO_ERROR;
 
@@ -513,7 +530,8 @@ ErrorCode Pool::AddShelf(ShelfIndex &shelf_idx, FormatFn format_func, bool assig
     // create empty shelf file
     while(1)
     {
-        ret = shelf.Create(S_IRUSR | S_IWUSR);
+
+        ret = shelf.Create(mode);
         if (ret == SHELF_FILE_FOUND)
         {
             tmp_version = RandForAddShelf();
@@ -714,7 +732,23 @@ bool Pool::FindNextShelf(ShelfIndex &shelf_idx, ShelfIndex start_idx, ShelfIndex
     }
     return membership_->FindFirstUsedSlot(shelf_idx, start_idx, end_idx);
 }
-    
+   
+ErrorCode Pool::FindNextFreeShelf(ShelfIndex &shelf_idx)
+{
+    if (IsOpen() == false)
+    {
+        return POOL_CLOSED;
+    }
+    ShelfIndex start_idx = 0; 
+    ShelfIndex end_idx = kMaxShelfCount - 1;
+   
+    if(membership_->FindFirstFreeSlot(shelf_idx, start_idx, end_idx) == true)
+    {
+        return NO_ERROR;
+    }
+    return POOL_SHELF_NOT_FOUND;
+}
+ 
 bool Pool::CheckShelf(ShelfIndex shelf_idx)
 {
     if (IsOpen() == false)
@@ -858,6 +892,11 @@ ErrorCode Pool::DefaultFormatFn(ShelfFile *shelf, size_t shelf_size)
     {
         return SHELF_FILE_NOT_FOUND;
     }
+}
+
+ErrorCode Pool::SetPermMetadataShelf(mode_t mode)
+{
+   return  metadata_shelf_.SetPermission(mode);
 }
 
 ErrorCode Pool::OpenMapMetadataShelf()

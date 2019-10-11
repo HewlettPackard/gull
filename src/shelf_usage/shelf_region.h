@@ -44,6 +44,7 @@ public:
     ErrorCode Create(size_t size);
     ErrorCode Destroy();
     ErrorCode Verify();    
+    ErrorCode Resize(size_t);
 
     bool IsOpen() const
     {
@@ -56,7 +57,9 @@ public:
     
     ErrorCode Map(void *addr_hint, size_t length, int prot, int flags, loff_t offset, void **mapped_addr);
     ErrorCode Unmap(void *mapped_addr, size_t length);
-    
+
+    ErrorCode GetPermission(mode_t *mode);   
+    ErrorCode SetPermission(mode_t mode);
 private:
     bool is_open_;    
     ShelfFile shelf_;

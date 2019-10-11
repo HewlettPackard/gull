@@ -48,6 +48,14 @@ struct ZoneEntryStack {
     // we access the following two fields atomically via 128-bit CAS:
     uint64_t head __attribute__ ((aligned (16)));
     uint64_t aba_counter;  // incremented each time head is written
+    //
+    // The ZoneEntryStack head (Freelist head) is of 16 bytes. The head of next 
+    // freelist level will be stacked at head + 16. Accessing of two freelist heads 
+    // can cause Cacheline contention. For a Cacheline size of 64 bytes, it can 
+    // contain four freelist heads in the same Cacheline. Add a padding to prevent 
+    // the Cacheline contention.
+    //  
+    char ZoneEntryStackPadding[kCacheLineSize-(sizeof(head)+sizeof(aba_counter))];
 
     // returns 0 if stack is empty
     uint64_t pop (void *addr);

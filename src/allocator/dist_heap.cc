@@ -66,7 +66,7 @@ DistHeap::~DistHeap()
     }
 }
 
-ErrorCode DistHeap::Create(size_t shelf_size)
+ErrorCode DistHeap::Create(size_t shelf_size, size_t min_alloc_size)
 {
     TRACE();
     assert(IsOpen() == false);

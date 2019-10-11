@@ -41,7 +41,11 @@
 using namespace nvmm;
 
 static size_t const kShelfSize = 128*1024*1024LLU; // 128 MB
+#ifdef ZONE
+static size_t const kListCount = 2;
+#else
 static size_t const kListCount = 16;
+#endif
 static int const ptr_count = 10;
 
 TEST(FreeLists, Test)

@@ -368,4 +368,44 @@ ErrorCode ShelfHeap::UnmapCloseShelf(bool use_shelf_manager, bool unregister)
     return ret;        
 }
     
+
+Errorcode ShelfHeap::Map(Offset offset, size_t size, void* addr_hint, int prot, void **mapped_addr)
+{
+    ErrorCode ret = NO_ERROR;
+    int page_size = getpagesize();
+    off_t aligned_start = offset - offset % page_size;
+    assert(aligned_start % page_size == 0);
+    off_t aligned_end = (offset + size) + (page_size - (offset + size) % page_size);
+    assert(aligned_end % page_size == 0);
+    size_t aligned_size = aligned_end - aligned_start;
+    assert(aligned_size % page_size == 0);
+
+    void *aligned_addr = NULL;
+    void *addr_hint = NULL;
+    ret = shelf_.Map(addr_hint, aligned_size, prot, MAP_SHARED, aligned_start, &aligned_addr, true);
+    if (ret != NO_ERROR)
+    {
+        return MAP_POINTER_FAILED;
+    }
+    
+    *mapped_addr = (void*)((char*)aligned_addr + offset % page_size);
+    return ret; 
+}
+
+ErrorCode ShelfHeap::Unmap(Offset offset, void *mapped_addr, size_t size)
+{
+    int page_size = getpagesize();
+    off_t aligned_start = offset - offset % page_size;
+    assert(aligned_start % page_size == 0);
+    off_t aligned_end = (offset + size) + (page_size - (offset + size) % page_size);
+    assert(aligned_end % page_size == 0);
+    size_t aligned_size = aligned_end - aligned_start;
+    assert(aligned_size % page_size == 0);
+    void *aligned_addr = (void*)((char*)mapped_addr - offset % page_size);
+    LOG(trace) << "UnmapPointer: path " << " offset " << aligned_start << " size " << aligned_size
+               << " aligned ptr " << (void*)aligned_addr
+               << " input ptr " << (void*)mapped_addr;
+    return ShelfFile::Unmap(aligned_addr, aligned_size, false);
+}
+
 } // namespace nvmm

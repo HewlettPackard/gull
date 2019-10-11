@@ -44,6 +44,30 @@ namespace nvmm{
 class ShelfHeap;
 class ShelfRegion;
 
+
+struct shelf_size 
+{
+   uint64_t headersize;
+   uint64_t headeroffset;
+   uint64_t shelfsize;
+};            
+
+enum EpochZoneHeapOps {
+    OP_RESIZE = 1,
+    OP_CHANGE_PERM = 2
+};
+
+//
+// This header is in shelf zero, used to store global shelf data strcuture.
+//
+struct GlobalHeader {
+    uint64_t op_in_progress;
+    uint64_t total_shelfs;
+    uint64_t total_size;
+    shelf_size sz[ShelfId::kMaxShelfCount];
+};
+
+
 // zone heap with delayed free
 // the only difference from the regular zone heap is: we store the 5 global lists for delayed free
 // at the beginning of the header shelf
@@ -54,9 +78,12 @@ public:
     EpochZoneHeap(PoolId pool_id);
     ~EpochZoneHeap();
 
-    ErrorCode Create(size_t shelf_size);
+    ErrorCode Create(size_t shelf_size, size_t min_alloc_size, mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     ErrorCode Destroy();
     bool Exist();
+    ErrorCode Resize(size_t);
+    ErrorCode SetPermission (mode_t mode);
+    ErrorCode GetPermission (mode_t *mode);
 
     ErrorCode Open();
     ErrorCode Close();
@@ -68,10 +95,16 @@ public:
 
     GlobalPtr Alloc (size_t size);
     void Free (GlobalPtr global_ptr);
+    ErrorCode Map(Offset offset, size_t size, void *addr_hint, int prot, void **mapped_addr);
+    ErrorCode Unmap(Offset offset, void *mapped_addr, size_t size);
 
     GlobalPtr Alloc (EpochOp &op, size_t size);
-    void Free(EpochOp &op, GlobalPtr global_ptr);
+    Offset AllocOffset (size_t size);
 
+    void Free(EpochOp &op, GlobalPtr global_ptr);
+    void Free(Offset offset);
+
+    void *OffsetToLocal(Offset offset);
     void *GlobalToLocal(GlobalPtr global_ptr);
     // TODO: not implemented yet
     GlobalPtr LocalToGlobal(void *addr);
@@ -89,23 +122,40 @@ private:
     static int const kListCnt = 5; // 5 global freelists for delayed free
     static uint64_t const kWorkerSleepMicroSeconds = 50000;
     uint64_t kFreeCnt = 1000; // free up to 1000 chunks everytime the background worker wakes up
+    int total_mapped_shelfs_;
 
+    GlobalHeader *gh_;
+    
     PoolId pool_id_;
     Pool pool_;
 
-    size_t rmb_size_;
-    ShelfHeap *rmb_; // zone heap
+    size_t rmb_size_[ShelfId::kMaxShelfCount];
+    ShelfHeap *rmb_[ShelfId::kMaxShelfCount]; // zone heap
 
-    size_t region_size_;
     ShelfRegion *region_; // headers of global freelists + headers of allocated memory chunks fron
                           // zone heap
-    void *mapped_addr_;
-    void *header_;
+    void *mapped_addr_[ShelfId::kMaxShelfCount];
+    void *header_[ShelfId::kMaxShelfCount];
+    void *bitmap_start_[ShelfId::kMaxShelfCount];
 
-    ZoneEntryStack *global_list_;
+    ZoneEntryStack *global_list_[ShelfId::kMaxShelfCount];
     uint64_t min_obj_size_;
 
     bool is_open_;
+    int shelf_id_for_create_;
+    size_t shelf_size_for_create_;
+    size_t header_size_;
+
+    ErrorCode OpenNewShelfs();
+    ErrorCode OpenShelf(int shelf_num);
+    ErrorCode CloseShelf(int shelf_num);
+    size_t get_header_size_from_size (size_t shelf_size, size_t min_alloc_size, ShelfIndex shelf_idx);
+    size_t get_header_shelf_size (int shelf_num);
+    size_t get_total_header_size ();
+    size_t get_total_size ();
+    int get_total_data_shelfs ();
+    Offset get_offset_from_shelfIndexoffset(Offset offset);
+    int get_shelfnum_from_shelfIndexoffset(Offset offset);
 
     // for the background cleaner thread
     std::thread cleaner_thread_;

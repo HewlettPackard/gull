@@ -25,6 +25,7 @@
 #include <fcntl.h> // for O_RDWR
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 #include <pthread.h>
+#include <random>
 
 #include <gtest/gtest.h>
 #include "nvmm/nvmm_fam_atomic.h"
@@ -188,6 +189,110 @@ TEST(MemoryManager, HeapWithMapUnmapPointer)
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 }
 
+
+// TODO
+TEST(MemoryManager, HeapWithMapUnmapReadWrite)
+{
+    PoolId pool_id = 1;
+    size_t size = 128*1024*1024LLU; // 128 MB
+    GlobalPtr ptr;
+
+    MemoryManager *mm = MemoryManager::GetInstance();
+    Heap *heap = NULL;
+    
+    // create a heap
+    EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
+    EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
+
+    // get the existing heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    ptr = heap->Alloc(sizeof(int));
+    EXPECT_TRUE(ptr.IsValid());
+    Offset offset = ptr.GetOffset();
+    int *int_ptr = NULL;
+    EXPECT_EQ(NO_ERROR,
+                  heap->Map(offset, sizeof(int), NULL, PROT_READ|PROT_WRITE,
+                                            (void **)&int_ptr));
+    *int_ptr = 10;
+    EXPECT_EQ(NO_ERROR, heap->Unmap(offset,(void *)int_ptr, sizeof(int)));
+    EXPECT_EQ(NO_ERROR, heap->Close());
+
+    delete heap;
+    
+    // get the existing heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    EXPECT_EQ(NO_ERROR,
+              heap->Map(offset, sizeof(int), NULL, PROT_READ|PROT_WRITE,
+                                        (void **)&int_ptr));
+    std::cout << " After successful write of 10, Value :" << *int_ptr << std::endl;
+    EXPECT_EQ(10, *int_ptr);
+    EXPECT_EQ(NO_ERROR, heap->Unmap(offset, (void *)int_ptr, sizeof(int)));
+    heap->Free(ptr);
+    EXPECT_EQ(NO_ERROR, heap->Close());
+
+    delete heap;
+    
+    // destroy a heap
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
+    EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
+}
+
+// TODO
+TEST(MemoryManagerDeathTest, HeapWithMapUnmapReadOnly)
+{
+    PoolId pool_id = 1;
+    size_t size = 128*1024*1024LLU; // 128 MB
+    GlobalPtr ptr;
+
+    MemoryManager *mm = MemoryManager::GetInstance();
+    Heap *heap = NULL;
+    
+    // create a heap
+    EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
+    EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
+
+    // get the existing heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    ptr = heap->Alloc(sizeof(int));
+    EXPECT_TRUE(ptr.IsValid());
+    Offset offset = ptr.GetOffset();
+    int *int_ptr = NULL;
+    EXPECT_EQ(NO_ERROR,
+              heap->Map(offset, sizeof(int), NULL, PROT_READ,
+                                        (void **)&int_ptr));
+    EXPECT_DEATH((*int_ptr = 10), "");
+    EXPECT_EQ(NO_ERROR, heap->Unmap(offset,(void *)int_ptr, sizeof(int)));
+    EXPECT_EQ(NO_ERROR, heap->Close());
+
+    delete heap;
+    
+    // get the existing heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    EXPECT_EQ(NO_ERROR,
+              heap->Map(offset, sizeof(int), NULL, PROT_READ,
+                                            (void **)&int_ptr));
+    std::cout << "Value :" << *int_ptr << std::endl;
+    EXPECT_EQ(0, *int_ptr);
+    EXPECT_EQ(NO_ERROR, heap->Unmap(offset, (void *)int_ptr, sizeof(int)));
+    heap->Free(ptr);
+    EXPECT_EQ(NO_ERROR, heap->Close());
+
+    delete heap;
+    
+    // destroy a heap
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
+    EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
+}
+
+// TODO
 TEST(MemoryManager, HeapWithGlobalLocalPtr)
 {
     PoolId pool_id = 1;
@@ -239,6 +344,7 @@ TEST(MemoryManager, HeapWithGlobalLocalPtr)
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 }
 
+#ifndef LFSWORKAROUND
 TEST(MemoryManager, HeapHugeObjects)
 {
     PoolId pool_id = 1;
@@ -299,8 +405,8 @@ TEST(MemoryManager, HeapHugeObjects)
 
     delete buf;
 }
-
-#ifndef FAME
+#endif
+#ifndef LFSWORKAROUND
 // multi-threaded
 #ifndef ALPS
 struct thread_argument{
@@ -315,7 +421,7 @@ void *worker(void *thread_arg)
     int count = arg->count;
     assert(count != 0);    
     MemoryManager *mm = MemoryManager::GetInstance();
-    size_t size = 8*1024*1024LLU; // 8MB
+    size_t size = 32*1024*1024LLU; // 8MB
     for (int i=0; i<count; i++)
     {
         PoolId pool_id = (PoolId)rand_uint32(1, Pool::kMaxPoolCount-1); // 0 is reserved
@@ -389,7 +495,7 @@ TEST(MemoryManager, MultiThreadStressTest)
     }
 }
 #endif // ALPS
-#endif // FAME
+#endif // LFSWORKAROUND
 
 // multi-process
 void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
@@ -458,6 +564,7 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
     std::cout << "DONE" << std::endl;
 }
 
+#ifndef LFSWORKAROUND
 TEST(MemoryManager, MultiProcessHeap)
 {
     int const process_count = 16;
@@ -465,7 +572,7 @@ TEST(MemoryManager, MultiProcessHeap)
     // create a shelf for communication among processes
     // use the FreeLists
     // TODO: make it a shelf_usage class?    
-    ShelfId const comm_shelf_id(15,15);
+    ShelfId const comm_shelf_id(15,1);
     std::string path = shelf_name.Path(comm_shelf_id);
     ShelfFile shelf(path);
     size_t length = 128*1024*1024LLU; 
@@ -528,7 +635,7 @@ TEST(MemoryManager, MultiProcessHeap)
     EXPECT_EQ(NO_ERROR, shelf.Close());
     EXPECT_EQ(NO_ERROR, shelf.Destroy());
 }
-
+#endif
 // TODO: there seems to be a bug in libfam-atomic that may cause this test case to fail
 
 // void stress(int count)

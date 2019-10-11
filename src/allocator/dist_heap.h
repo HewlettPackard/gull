@@ -61,7 +61,7 @@ public:
     ~DistHeap();
 
     // TODO: size is not used for now
-    ErrorCode Create(size_t shelf_size);
+    ErrorCode Create(size_t shelf_size, size_t min_alloc_size);
     ErrorCode Destroy();
     bool Exist();
 

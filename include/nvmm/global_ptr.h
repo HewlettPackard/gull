@@ -100,7 +100,7 @@ class GlobalPtrClass
     }
 
  private:
-    static int const kOffsetShift = (sizeof(GlobalPtrT)-sizeof(ShelfIdT))*8;
+    static int const kOffsetShift = (int)(sizeof(GlobalPtrT)-(ShelfIdT::kPoolIdShelfIdbits)/8)*8;
     static OffsetT const kMaxOffset = (((OffsetT)1) << kOffsetShift) - 1;
 
 

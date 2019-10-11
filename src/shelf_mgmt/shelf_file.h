@@ -84,7 +84,9 @@ public:
     ErrorCode Rename(char const *new_pathname);
     bool Exist();
     size_t Size();        
-    
+    ErrorCode GetPermission(mode_t *mode);
+    ErrorCode SetPermission(mode_t mode);
+
 private:
     int fd_;
     std::string path_;

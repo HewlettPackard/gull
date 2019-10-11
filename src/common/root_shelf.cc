@@ -87,8 +87,9 @@ ErrorCode RootShelf::Create()
     {
         return SHELF_FILE_OPENED;
     }
-
-    int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR|S_IWUSR);
+    mode_t oldmask = umask(0);
+    int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+    umask(oldmask);
     if (fd == -1)
     {
         LOG(fatal) << "RootShelf: Failed to create the root shelf file " << path_;
@@ -114,6 +115,7 @@ ErrorCode RootShelf::Create()
         LOG(fatal) << "RootShelf: Failed to register fam atomic region " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
+    memset(addr, 0, kShelfSize);
 
     // leave space for the magic number
     char *cur = (char*)addr;
@@ -134,6 +136,9 @@ ErrorCode RootShelf::Create()
 
     // finally set the magic number
     fam_atomic_u64_write((uint64_t*)addr, kMagicNum);
+
+    // Make sure all updates are persisted     
+    fam_persist(addr, kShelfSize);
 
     //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr;
     fam_atomic_unregister_region(addr, kShelfSize);
