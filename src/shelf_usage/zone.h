@@ -36,10 +36,18 @@ class Zone {
 public:
     Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
 	 size_t max_pool_size, void *helper, size_t helper_size);
+    
+    //Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
+    //     size_t max_pool_size, void *helper, size_t helper_size, void *zoneheader_ptr, size_t zoneheader_ptr_size);
 
     Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size);
 
+    //Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size, void *zoneheader_ptr, size_t zoneheader_size);
+
     ~Zone();
+    
+    // Static function to return header size
+    static size_t get_header_size(size_t shelf_size, size_t min_obj_size);
 
     // returns 0 if no blocks are currently available
     Offset alloc(size_t size);
@@ -61,6 +69,8 @@ public:
     // converting between external Offset (with size encoded) and local-address-space pointers
     void*    OffsetToPtr(Offset p);
     Offset PtrToOffset (void*    p);
+    
+    size_t get_bitmap_offset();
 
     // for delayed free
     uint64_t min_obj_size();
@@ -77,6 +87,11 @@ public:
     char *shelf_location_ptr;
     char *header_ptr;
     size_t header_size;
+    char *zone_header_ptr;
+    size_t zone_header_size;
+
+    // Starting address used for merge bitmap
+    uint8_t *merge_bitmap_start_addr;
 
     // shortcut for from_Offset; does not work well on Zone*:
     //   need (*fba)[ptr] for that case

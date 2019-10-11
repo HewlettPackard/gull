@@ -36,6 +36,11 @@ static int const kCacheLineSize = CACHE_LINE_SIZE;
 static int const kVirtualPageSize = 64*1024;
 
 /*
+ * Permission mask
+ */
+#define PERM_MASK (S_IRWXU|S_IRWXG|S_IRWXO) /* 0777 */
+
+/*
  * Round non-negative x up to the nearest multiple of positive
  * multiple
  */

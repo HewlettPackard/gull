@@ -181,6 +181,8 @@ public:
     bool IsValidPtr(void *addr);    
     void *OffsetToPtr(Offset offset) const;
     Offset PtrToOffset(void *addr);
+    ErrorCode Map(Offset offset, size_t size, void *addr_hint, int prot, void **mapped_addr);
+    ErrorCode Unmap(Offset offset, void *mapped_addr, size_t size);
 
 private:
     ErrorCode OpenMapShelf(bool use_shelf_manager=false);

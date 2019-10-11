@@ -68,6 +68,21 @@ public:
         //assert(shelf_id == ToShelfId(pathname));
         return pathname;
     }
+
+    std::string Path(std::string shelf_id_str, std::string suffix1="", std::string suffix2="")
+    {
+        std::string pathname = prefix_ + "_" + shelf_id_str;
+        if (suffix1 != "")
+        {
+            pathname = pathname + "_" + suffix1;
+        }
+        if (suffix2 != "")
+        {
+            pathname = pathname + "_" + suffix2;
+        }
+        //assert(shelf_id == ToShelfId(pathname));
+        return pathname;
+    }
     
     std::string prefix_; // all shelves share a common prefix
 };

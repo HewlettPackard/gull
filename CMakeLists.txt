@@ -23,6 +23,8 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
   message(STATUS "Build type: Debug")
 elseif(CMAKE_BUILD_TYPE MATCHES Release)
   message(STATUS "Build type: Release")
+elseif(CMAKE_BUILD_TYPE MATCHES Coverage)
+   message(STATUS "Build type: Coverage")
 else()
   message(STATUS "Invalid build type: ${CMAKE_BUILD_TYPE}")
   message(STATUS "Default to : Release")
@@ -53,6 +55,22 @@ if(FAME) # FAME
 else() # NUMA
   set(TMPFS_PATH "/dev/shm")
   message(STATUS "tmpfs location: ${TMPFS_PATH}")
+endif()
+
+#
+# There is a bug in current LFS code, which does not mmap from right offset.
+# Bug: mmap from any offset incorrectly mmaps from boundaries of Book size
+# (8GB default).
+#
+# So we create header's in case of LFS as the multiple of 8GB (Book size).
+# Header extention in case of a Resize also will be multiple of 8GB(Book size).
+#
+if(LFSWORKAROUND)
+  add_definitions(-DLFSWORKAROUND)
+endif()
+
+if(LFS_BOOK_SIZE)
+  add_definitions(-DLFS_BOOK_SIZE=${LFS_BOOK_SIZE})
 endif()
 
 #
@@ -149,6 +167,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -g -O2")
 # gcc flags for debug build
 #
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -DDEBUG -Og -g")
+
+set(CMAKE_CXX_FLAGS_COVERAGE "${CMAKE_CXX_FLAGS} -DDEBUG -DCOVERAGE -Og -g -fprofile-arcs -ftest-coverage")
 
 #
 # enable GTest

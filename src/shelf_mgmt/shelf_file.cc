@@ -38,6 +38,7 @@
 
 #include "nvmm/fam.h"
 #include "nvmm/log.h"
+#include "common/common.h"
 
 #include "shelf_mgmt/shelf_manager.h"
 
@@ -77,7 +78,9 @@ ErrorCode ShelfFile::Create(mode_t mode, size_t size)
     }
     
     ErrorCode ret = NO_ERROR;
+    mode_t oldmask = umask(0);
     fd_ = creat(path_.c_str(), mode);
+    umask(oldmask);
     if ( fd_ != -1)
     {
         if (size > 0)
@@ -276,7 +279,7 @@ ErrorCode ShelfFile::Map(void *addr_hint, size_t length, int prot, int flags, lo
         if (register_fam_atomic == true)
         {
             //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)*mapped_addr;
-            int rc = fam_atomic_register_region(*mapped_addr, length, fd_, offset);
+            int rc = fam_atomic_register_region(*mapped_addr, length, fd_, 0);
             if (rc < 0)
             {
                 LOG(fatal) << "fam_atomic_register_region failed";
@@ -380,6 +383,27 @@ ErrorCode ShelfFile::Unmap(void *mapped_addr, bool unregister)
         ShelfManager::Unlock();
         return NO_ERROR;
     }
+}
+
+ErrorCode ShelfFile::GetPermission(mode_t *mode)
+{
+   TRACE();
+   struct stat st;
+
+   if (stat(path_.c_str(), &st) != 0)
+      return SHELF_FILE_GET_PERM_FAILED;
+
+   *mode = st.st_mode & PERM_MASK;
+   return NO_ERROR;   
+}
+
+ErrorCode ShelfFile::SetPermission(mode_t mode)
+{
+   TRACE();   
+   if (chmod(path_.c_str(), mode & PERM_MASK) == 0)
+     return NO_ERROR;
+   else
+     return SHELF_FILE_SET_PERM_FAILED;
 }
     
 } // namespace nvmm

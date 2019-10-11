@@ -48,9 +48,12 @@ public:
     static ShelfIdT const kInvalidShelfId = 0; 
 
     // max pool count and shelf count per pool
-    static PoolIdT const kMaxPoolCount = 16;
-    static ShelfIndexT const kMaxShelfCount = 16;
+    static PoolIdT const kMaxPoolCount = 1UL<<14;
+    static ShelfIndexT const kMaxShelfCount = 1UL<<7;
     
+    // Total number of bits used for PoolId + ShelfId
+    static uint8_t const kPoolIdShelfIdbits = 24;
+
     ShelfIdClass()
         : shelf_id_{kInvalidShelfId}
     {
@@ -152,16 +155,16 @@ private:
 
     
 // internal type of ShelfId
-using ShelfIdStorageType = uint8_t;
-           
+using ShelfIdStorageType = uint32_t;
+
 // PoolId
-using PoolId = uint8_t;
+using PoolId = uint16_t;
 
 // ShelfIndex
 using ShelfIndex = uint8_t;
 
-// ShelfId: 8-bit shelf id with 4-bit as pool id and 4-bit as shelf index
-using ShelfId = ShelfIdClass<ShelfIdStorageType, 8, PoolId, 4, ShelfIndex, 4>;
+// ShelfId: 24-bit shelf id with 16-bit as pool id and 8-bit as shelf index
+using ShelfId = ShelfIdClass<ShelfIdStorageType, 24, PoolId, 16, ShelfIndex, 8>;
     
 } // namespace nvmm
 

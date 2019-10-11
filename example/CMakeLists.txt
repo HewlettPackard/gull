@@ -8,4 +8,4 @@ endfunction()
 
 add_nvmm_example(region_example)
 add_nvmm_example(heap_example)
-
+add_nvmm_example(heap_resize_example)

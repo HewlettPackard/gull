@@ -62,6 +62,15 @@ ErrorCode ShelfRegion::Create(size_t size)
     return shelf_.Truncate(size);
 }
 
+ErrorCode ShelfRegion::Resize(size_t size)
+{
+    TRACE();
+    assert(IsOpen() ==true);
+
+    // allocate memory for the shelf
+    return shelf_.Truncate(size);
+}
+
 ErrorCode ShelfRegion::Destroy()
 {
     TRACE();
@@ -110,6 +119,25 @@ ErrorCode ShelfRegion::Open(int flags)
 
     is_open_ = true;
     return NO_ERROR;
+}
+
+ErrorCode ShelfRegion::GetPermission(mode_t *mode)
+{
+    TRACE();
+    if (IsOpen() == false) {
+      return SHELF_FILE_CLOSED; 
+    }
+    return shelf_.GetPermission(mode);
+}
+
+ErrorCode ShelfRegion::SetPermission(mode_t mode)
+{
+   TRACE();
+   if (IsOpen() == false) {
+     return SHELF_FILE_CLOSED;
+   }
+   return shelf_.SetPermission(mode);
+
 }
 
 ErrorCode ShelfRegion::Close()

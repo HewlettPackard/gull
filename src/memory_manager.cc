@@ -176,7 +176,7 @@ public:
     void *GlobalToLocal(GlobalPtr ptr);
     GlobalPtr LocalToGlobal(void *addr);
 
-    ErrorCode CreateHeap(PoolId id, size_t shelf_size);
+    ErrorCode CreateHeap(PoolId id, size_t shelf_size, size_t min_alloc_size, mode_t mode);
     ErrorCode DestroyHeap(PoolId id);
     ErrorCode FindHeap(PoolId id, Heap **heap);
     Heap *FindHeap(PoolId id);
@@ -185,6 +185,9 @@ public:
     ErrorCode DestroyRegion(PoolId id);
     ErrorCode FindRegion(PoolId id, Region **region);
     Region *FindRegion(PoolId id);
+    void *GetRegionIdBitmapAddr();
+    GlobalPtr GetMetadataRegionRootPtr(int type);
+    GlobalPtr SetMetadataRegionRootPtr(int type, GlobalPtr);
 
 private:
     enum PoolType {
@@ -228,6 +231,9 @@ private:
     RootShelf root_shelf_;
     nvmm_fam_spinlock* locks_; // an array of fam_spinlock
     PoolTypeEntry *types_; // store pool types
+    void *bmap_addr_; // store bitmap start address for region id management
+    uint64_t *metadata_regionid_root_; // Store metadata region id's globalptr
+    uint64_t *metadata_regionname_root_;// Store metadata region name's globalptr
 };
 
 ErrorCode MemoryManager::Impl_::Init()
@@ -253,6 +259,17 @@ ErrorCode MemoryManager::Impl_::Init()
 
     locks_ = (nvmm_fam_spinlock*)root_shelf_.Addr();
     types_ = (PoolTypeEntry*)((char*)root_shelf_.Addr() + ShelfId::kMaxPoolCount*sizeof(nvmm_fam_spinlock));
+    // get the addr to be used by bitmap for region id management
+    // Total size used by the bitmap will be kMaxPoolCount/8 bytes.
+    bmap_addr_ = (void*)(types_ + ShelfId::kMaxPoolCount*sizeof(PoolTypeEntry));
+    // Region Id and name rootptr for metadata
+    uint64_t *next_addr = (uint64_t *)((char *)bmap_addr_+ShelfId::kMaxPoolCount/(sizeof (uint64_t)));
+    uint64_t addr  = (uint64_t)next_addr;
+    addr = (addr + (0x7)) & ~7UL;  // Round up to 8-byte boundary
+    next_addr = (uint64_t *)addr;
+    metadata_regionid_root_ = next_addr+1;
+    metadata_regionname_root_ = metadata_regionid_root_ + 1;
+
     is_ready_ = true;
     return NO_ERROR;
 }
@@ -374,7 +391,7 @@ Region *MemoryManager::Impl_::FindRegion(PoolId id)
     return ret;
 }
 
-ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size)
+ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size, size_t min_alloc_size, mode_t mode)
 {
     assert(is_ready_ == true);
     assert(id > 0);
@@ -391,7 +408,7 @@ ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size)
 #else
     DistHeap heap(id);
 #endif
-    ret = heap.Create(size);
+    ret = heap.Create(size, min_alloc_size, mode);
     if (ret == NO_ERROR)
     {
         SetType(id, PoolType::HEAP);
@@ -677,6 +694,42 @@ GlobalPtr MemoryManager::Impl_::LocalToGlobal(void *addr)
     }
 }
 
+void *MemoryManager::Impl_::GetRegionIdBitmapAddr()
+{
+    return bmap_addr_;
+}
+
+GlobalPtr MemoryManager::Impl_::GetMetadataRegionRootPtr(int type){
+    if (type == METADATA_REGION_ID) {
+        return GlobalPtr(fam_atomic_u64_read(metadata_regionid_root_));
+    } else if (type == METADATA_REGION_NAME) {
+        return GlobalPtr(fam_atomic_u64_read(metadata_regionname_root_));
+    }
+    return GlobalPtr(); // return an invalid global pointer
+}
+
+GlobalPtr MemoryManager::Impl_::SetMetadataRegionRootPtr(int type, GlobalPtr regionPtr){
+    if (type == METADATA_REGION_ID) {
+        uint64_t regptr = regionPtr.ToUINT64();
+        // update metadata_regionid_root_ only if it doesn't have any value
+        uint64_t resultptr = fam_atomic_u64_compare_and_store(metadata_regionid_root_, 0, regptr);
+        if (resultptr == 0) {
+             return regionPtr;
+        } else {
+             return GlobalPtr(resultptr);
+        }
+    } else if (type == METADATA_REGION_NAME) {
+        uint64_t regptr = regionPtr.ToUINT64();
+        // update metadata_regionname_root_ only if it doesn't have any value
+        uint64_t resultptr = fam_atomic_u64_compare_and_store(metadata_regionname_root_, 0, regptr);
+        if (resultptr == 0) {
+             return regionPtr;
+        } else {
+             return GlobalPtr(resultptr);
+        }
+    }
+    return GlobalPtr(); // return an invalid global pointer;
+}
 
 
 /*
@@ -737,9 +790,9 @@ Region *MemoryManager::FindRegion(PoolId id)
     return pimpl_->FindRegion(id);
 }
 
-ErrorCode MemoryManager::CreateHeap(PoolId id, size_t size)
+ErrorCode MemoryManager::CreateHeap(PoolId id, size_t size, size_t min_alloc_size, mode_t mode)
 {
-    return pimpl_->CreateHeap(id, size);
+    return pimpl_->CreateHeap(id, size, min_alloc_size, mode);
 }
 
 ErrorCode MemoryManager::DestroyHeap(PoolId id)
@@ -776,6 +829,19 @@ void *MemoryManager::GlobalToLocal(GlobalPtr ptr)
 GlobalPtr MemoryManager::LocalToGlobal(void *addr)
 {
     return pimpl_->LocalToGlobal(addr);
+}
+
+void *MemoryManager::GetRegionIdBitmapAddr()
+{
+    return pimpl_->GetRegionIdBitmapAddr();
+}
+
+GlobalPtr MemoryManager::GetMetadataRegionRootPtr(int type){
+    return pimpl_->GetMetadataRegionRootPtr(type);
+}
+
+GlobalPtr MemoryManager::SetMetadataRegionRootPtr(int type, GlobalPtr regionRoot){
+    return pimpl_->SetMetadataRegionRootPtr(type, regionRoot);
 }
 
 } // namespace nvmm

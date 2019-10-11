@@ -88,8 +88,11 @@ ErrorCode EpochShelf::Create()
     {
         return SHELF_FILE_OPENED;
     }
+    
+    mode_t oldmask = umask(0);
+    int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+    umask(oldmask);
 
-    int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR|S_IWUSR);
     if (fd == -1)
     {
         LOG(fatal) << "EpochShelf: Failed to create the epoch shelf file " << path_;
@@ -115,6 +118,7 @@ ErrorCode EpochShelf::Create()
         LOG(fatal) << "EpochShelf: Failed to register fam atomic region " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
+    fam_memset_persist(addr, 0, kShelfSize );
 
     // leave space for the magic number
     char *cur = (char*)addr;

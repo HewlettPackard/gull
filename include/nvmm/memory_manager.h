@@ -36,6 +36,9 @@
 
 namespace nvmm{
 
+#define METADATA_REGION_ID 1
+#define METADATA_REGION_NAME 2
+
 // Global bootstrapping functions for NVMM
 
 
@@ -105,7 +108,7 @@ public:
     // Return
     // - NO_ERROR: heap was created
     // - ID_FOUND: the given id is in use
-    ErrorCode CreateHeap(PoolId id, size_t shelf_size);
+    ErrorCode CreateHeap(PoolId id, size_t shelf_size, size_t min_alloc_size = 64, mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 
     // Destroy the heap with the given id
     // Return
@@ -163,6 +166,19 @@ public:
     // Caller is responsible for freeing the poitner
     // Return NULL if region of the given id is not found
     Region *FindRegion(PoolId id);
+
+    // Return the address reserved for bitmap for region id 
+    // management in memory server
+    void *GetRegionIdBitmapAddr();
+
+    // Return the global pointer for metadata region id or region name
+    // based of type. type is METADATA_REGION_ID or METADATA_REGION_NAME
+    GlobalPtr GetMetadataRegionRootPtr(int type);
+
+    // Set the global pointer for metadata region id or region name
+    // based on type as METADATA_REGION_ID or METADATA_REGION_NAME
+    GlobalPtr SetMetadataRegionRootPtr(int type, GlobalPtr);
+
 
 private:
 

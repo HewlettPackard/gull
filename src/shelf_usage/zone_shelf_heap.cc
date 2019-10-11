@@ -59,7 +59,12 @@ ShelfHeap::~ShelfHeap()
     }
 }
 
-ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size)
+size_t ShelfHeap::get_header_size(size_t shelf_size, size_t min_obj_size)
+{
+    return Zone::get_header_size(shelf_size,min_obj_size);
+}
+
+ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size, size_t min_alloc_size)
 {
     assert(IsOpen() == false);
     assert(shelf_.Exist() == true);
@@ -84,7 +89,7 @@ ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size)
     // create zone layout
     // TODO: this will fail if the shelf file already exists; if the file exists and it is
     // already inited, it will fail
-    Zone *zone = new Zone(addr_, zone_size, 64, zone_size, helper, helper_size);
+    Zone *zone = new Zone(addr_, zone_size, min_alloc_size, zone_size, helper, helper_size);
     delete zone;
     
     ret= UnmapCloseShelf();
@@ -119,6 +124,14 @@ ErrorCode ShelfHeap::Destroy()
 
     // free space for the shelf
     return shelf_.Truncate(0);
+}
+
+ErrorCode ShelfHeap::SetPermission(mode_t mode)
+{
+    if (IsOpen() == false) {
+       return SHELF_FILE_CLOSED;
+    }
+    return shelf_.SetPermission(mode);
 }
 
 ErrorCode ShelfHeap::Verify()
@@ -344,5 +357,49 @@ void ShelfHeap::Stats()
     assert(IsOpen() == true);
     zone_->stats();
 }
+
+size_t ShelfHeap::get_bitmap_offset()
+{
+    assert(IsOpen() == true);
+    return zone_->get_bitmap_offset();
+}
+
+ErrorCode ShelfHeap::Map(Offset offset, size_t size, void* addr_hint, int prot, void **mapped_addr)
+{
+    ErrorCode ret = NO_ERROR;
+    int page_size = getpagesize();
+    off_t aligned_start = offset - offset % page_size;
+    assert(aligned_start % page_size == 0);
+    off_t aligned_end = (offset + size) + (page_size - (offset + size) % page_size);
+    assert(aligned_end % page_size == 0);
+    size_t aligned_size = aligned_end - aligned_start;
+    assert(aligned_size % page_size == 0);
+
+    void *aligned_addr = NULL;
+    ret = shelf_.Map(NULL, aligned_size, prot, MAP_SHARED, aligned_start, &aligned_addr, true);
+    if (ret != NO_ERROR)
+    {
+        return MAP_POINTER_FAILED;
+    }
+
+    *mapped_addr = (void*)((char*)aligned_addr + offset % page_size);
+    return ret;
+}
+ErrorCode ShelfHeap::Unmap(Offset offset, void *mapped_addr, size_t size)
+{
+    int page_size = getpagesize();
+    off_t aligned_start = offset - offset % page_size;
+    assert(aligned_start % page_size == 0);
+    off_t aligned_end = (offset + size) + (page_size - (offset + size) % page_size);
+    assert(aligned_end % page_size == 0);
+    size_t aligned_size = aligned_end - aligned_start;
+    assert(aligned_size % page_size == 0);
+    void *aligned_addr = (void*)((char*)mapped_addr - offset % page_size);
+    LOG(trace) << "UnmapPointer: path " << " offset " << aligned_start << " size " << aligned_size
+               << " aligned ptr " << (void*)aligned_addr
+               << " input ptr " << (void*)mapped_addr;
+    return ShelfFile::Unmap(aligned_addr, aligned_size, false);
+}
+
 
 } // namespace nvmm

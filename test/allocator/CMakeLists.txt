@@ -1,6 +1,7 @@
 add_nvmm_test(test_pool_region)
 if(ZONE)
   add_nvmm_test(test_epoch_zone_heap)
+  add_nvmm_test(test_epoch_zone_heap_resize)
   if(CMAKE_BUILD_TYPE MATCHES Debug)
     add_nvmm_test(test_epoch_zone_heap_crash)
   endif()
