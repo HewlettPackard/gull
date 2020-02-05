@@ -37,25 +37,22 @@ namespace nvmm {
 
 class Zone;
 
-class ShelfHeap
-{
-public:
+class ShelfHeap {
+  public:
     ShelfHeap() = delete;
     // the shelf file must already exist
     ShelfHeap(std::string pathname);
     ShelfHeap(std::string pathname, ShelfId shelf_id);
     ~ShelfHeap();
 
-    ErrorCode Create(size_t size, void *helper, size_t helper_size, size_t min_alloc_size);
+    ErrorCode Create(size_t size, void *helper, size_t helper_size,
+                     size_t min_alloc_size);
     ErrorCode Destroy();
     ErrorCode Verify();
     ErrorCode Recover();
     ErrorCode SetPermission(mode_t mode);
 
-    bool IsOpen() const
-    {
-        return is_open_;
-    }
+    bool IsOpen() const { return is_open_; }
 
     ErrorCode Open(void *helper, size_t helper_size);
     ErrorCode Close();
@@ -69,7 +66,7 @@ public:
     bool IsValidPtr(void *addr);
 
     void *OffsetToPtr(Offset offset) const;
-    Offset PtrToOffset(void *addr) const ;
+    Offset PtrToOffset(void *addr) const;
     size_t get_bitmap_offset();
 
     void Merge();
@@ -77,14 +74,18 @@ public:
     void OnlineRecover();
 
     void Stats();
-    ErrorCode Map(Offset offset, size_t size, void *addr_hint, int prot, void **mapped_addr);
+    ErrorCode Map(Offset offset, size_t size, void *addr_hint, int prot,
+                  void **mapped_addr);
     ErrorCode Unmap(Offset offset, void *mapped_addr, size_t size);
 
     static size_t get_header_size(size_t shelf_size, size_t min_obj_size);
 
-private:
-    ErrorCode OpenMapShelf(bool use_shelf_manager=false);
-    ErrorCode UnmapCloseShelf(bool use_shelf_manager=false, bool unregister=false);
+    ErrorCode MarkInvalid();
+
+  private:
+    ErrorCode OpenMapShelf(bool use_shelf_manager = false);
+    ErrorCode UnmapCloseShelf(bool use_shelf_manager = false,
+                              bool unregister = false);
     bool is_open_;
     ShelfFile shelf_;
     void *addr_;
