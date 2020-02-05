@@ -25,46 +25,47 @@
 #ifndef _NVMM_HEAP_H_
 #define _NVMM_HEAP_H_
 
+#include "nvmm/epoch_manager.h"
 #include "nvmm/error_code.h"
 #include "nvmm/global_ptr.h"
-#include "nvmm/epoch_manager.h"
 
 namespace nvmm {
 
-class Heap
-{
-public:
+class Heap {
+  public:
     virtual ~Heap(){};
 
     virtual ErrorCode Open() = 0;
     virtual ErrorCode Close() = 0;
     virtual bool IsOpen() = 0;
+    virtual bool IsInvalid() = 0;
 
-    virtual ErrorCode Map (Offset offset, size_t size, void *addr_hint, int prot, void **mapped_addr) = 0;
-    virtual ErrorCode Unmap (Offset offset, void *mapped_addr, size_t size) = 0;
+    virtual ErrorCode Map(Offset offset, size_t size, void *addr_hint, int prot,
+                          void **mapped_addr) = 0;
+    virtual ErrorCode Unmap(Offset offset, void *mapped_addr, size_t size) = 0;
 
-    virtual GlobalPtr Alloc (size_t size) = 0;
-    virtual void Free (GlobalPtr global_ptr) = 0;
+    virtual GlobalPtr Alloc(size_t size) = 0;
+    virtual void Free(GlobalPtr global_ptr) = 0;
 
-    virtual GlobalPtr Alloc (EpochOp &op, size_t size){return (GlobalPtr)0;};
-    virtual void Free (EpochOp &op, GlobalPtr global_ptr){};
+    virtual GlobalPtr Alloc(EpochOp &op, size_t size) { return (GlobalPtr)0; };
+    virtual void Free(EpochOp &op, GlobalPtr global_ptr){};
 
     // Functions for Offset based free and alloc function
-    virtual Offset AllocOffset (size_t size){return 0;};
+    virtual Offset AllocOffset(size_t size) { return 0; };
     virtual void Free(Offset offset){};
 
-    virtual ErrorCode Resize (size_t size) = 0;
-    virtual ErrorCode SetPermission (mode_t mode) = 0;
-    virtual ErrorCode GetPermission (mode_t *mode) = 0;
+    virtual ErrorCode Resize(size_t size) = 0;
+    virtual ErrorCode SetPermission(mode_t mode) = 0;
+    virtual ErrorCode GetPermission(mode_t *mode) = 0;
 
-    virtual void *OffsetToLocal(Offset offset){return NULL;};
-    virtual size_t MinAllocSize(){return 0;};
-    virtual void Merge (){};
-    virtual void OfflineRecover (){};
-    virtual void OnlineRecover (){};
-    virtual void Stats (){};
-    virtual size_t Size () {return 0;};
-    virtual void OfflineFree (){};
+    virtual void *OffsetToLocal(Offset offset) { return NULL; };
+    virtual size_t MinAllocSize() { return 0; };
+    virtual void Merge(){};
+    virtual void OfflineRecover(){};
+    virtual void OnlineRecover(){};
+    virtual void Stats(){};
+    virtual size_t Size() { return 0; };
+    virtual void OfflineFree(){};
 };
 
 } // namespace nvmm

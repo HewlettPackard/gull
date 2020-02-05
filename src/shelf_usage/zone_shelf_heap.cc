@@ -26,8 +26,8 @@
 #include <stdint.h>
 #include <string>
 
-#include <assert.h> // for assert()
-#include <fcntl.h> // for O_RDWR
+#include <assert.h>   // for assert()
+#include <fcntl.h>    // for O_RDWR
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 
 #include "nvmm/error_code.h"
@@ -42,130 +42,113 @@
 namespace nvmm {
 
 ShelfHeap::ShelfHeap(std::string pathname)
-    : is_open_{false}, shelf_{pathname}, addr_{NULL}, zone_{NULL}
-{
-}
+    : is_open_{false}, shelf_{pathname}, addr_{NULL}, zone_{NULL} {}
 
 ShelfHeap::ShelfHeap(std::string pathname, ShelfId shelf_id)
-    : is_open_{false}, shelf_{pathname, shelf_id}, addr_{NULL}, zone_{NULL}
-{
-}
-    
-ShelfHeap::~ShelfHeap()
-{
-    if (IsOpen() == true)
-    {
+    : is_open_{false}, shelf_{pathname, shelf_id}, addr_{NULL}, zone_{NULL} {}
+
+ShelfHeap::~ShelfHeap() {
+    if (IsOpen() == true) {
         (void)Close();
     }
 }
 
-size_t ShelfHeap::get_header_size(size_t shelf_size, size_t min_obj_size)
-{
-    return Zone::get_header_size(shelf_size,min_obj_size);
+size_t ShelfHeap::get_header_size(size_t shelf_size, size_t min_obj_size) {
+    return Zone::get_header_size(shelf_size, min_obj_size);
 }
 
-ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size, size_t min_alloc_size)
-{
+ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size,
+                            size_t min_alloc_size) {
     assert(IsOpen() == false);
     assert(shelf_.Exist() == true);
-    
-    ErrorCode ret = NO_ERROR;    
-    
+
+    ErrorCode ret = NO_ERROR;
+
     // allocate memory for the shelf
     // TODO: make sure actual_size is rounded up to N*8GB
     ret = shelf_.Truncate(zone_size);
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         return ret;
     }
-    
+
     // then, format the shelf
     ret = OpenMapShelf();
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         return ret;
     }
-    
+
     // create zone layout
-    // TODO: this will fail if the shelf file already exists; if the file exists and it is
-    // already inited, it will fail
-    Zone *zone = new Zone(addr_, zone_size, min_alloc_size, zone_size, helper, helper_size);
+    // TODO: this will fail if the shelf file already exists; if the file exists
+    // and it is already inited, it will fail
+    Zone *zone = new Zone(addr_, zone_size, min_alloc_size, zone_size, helper,
+                          helper_size);
     delete zone;
-    
-    ret= UnmapCloseShelf();
-    if (ret != NO_ERROR)
-    {
+
+    ret = UnmapCloseShelf();
+    if (ret != NO_ERROR) {
         return ret;
-    }        
-    
+    }
+
     return ret;
 }
-        
-ErrorCode ShelfHeap::Destroy()
-{
+
+ErrorCode ShelfHeap::Destroy() {
     assert(IsOpen() == false);
 
     ErrorCode ret = NO_ERROR;
 
     ret = OpenMapShelf(true);
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         return ret;
     }
-    
+
     // destroy the bitmap
-    // TODO: zero out everything 
-    
+    // TODO: zero out everything
+
     ret = UnmapCloseShelf(true, true);
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         return ret;
-    }        
+    }
 
     // free space for the shelf
-    return shelf_.Truncate(0);
+    // return shelf_.Truncate(0);
+    return NO_ERROR;
 }
 
-ErrorCode ShelfHeap::SetPermission(mode_t mode)
-{
+ErrorCode ShelfHeap::SetPermission(mode_t mode) {
     if (IsOpen() == false) {
-       return SHELF_FILE_CLOSED;
+        return SHELF_FILE_CLOSED;
     }
     return shelf_.SetPermission(mode);
 }
 
-ErrorCode ShelfHeap::Verify()
-{
+ErrorCode ShelfHeap::Verify() {
     assert(IsOpen() == false);
     ErrorCode ret = NO_ERROR;
     ret = OpenMapShelf();
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         return ret;
     }
-    
+
     // TODO: verify zone header
 
-    //out:    
-    (void) UnmapCloseShelf();
+    // out:
+    (void)UnmapCloseShelf();
     return ret;
 }
 
-ErrorCode ShelfHeap::Recover()
-{
+ErrorCode ShelfHeap::Recover() {
     // TODO: not yet implemented
     return NO_ERROR;
 }
-    
-ErrorCode ShelfHeap::Open(void *helper, size_t helper_size)
-{
+
+ErrorCode ShelfHeap::Open(void *helper, size_t helper_size) {
     assert(IsOpen() == false);
 
     ErrorCode ret = NO_ERROR;
 
     ret = OpenMapShelf(true);
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         return ret;
     }
 
@@ -178,35 +161,37 @@ ErrorCode ShelfHeap::Open(void *helper, size_t helper_size)
     return ret;
 }
 
-ErrorCode ShelfHeap::Close()
-{
+ErrorCode ShelfHeap::Close() {
     assert(IsOpen() == true);
 
     delete zone_;
     zone_ = NULL;
+
+    size_t size = shelf_.Size();
+	
+	//If the shelf is invalid just unmap the shelf
+    if (shelf_.IsInvalid()) {
+        return shelf_.Unmap(addr_, size, true);
+    }
     
-    ErrorCode ret = UnmapCloseShelf(true, false);
-    if (ret == NO_ERROR)
-    {
+	ErrorCode ret = UnmapCloseShelf(true, false);
+    if (ret == NO_ERROR) {
         is_open_ = false;
     }
     return ret;
 }
 
-size_t ShelfHeap::Size()
-{
+size_t ShelfHeap::Size() {
     assert(IsOpen() == true);
     return shelf_.Size();
 }
 
-size_t ShelfHeap::MinAllocSize()
-{
+size_t ShelfHeap::MinAllocSize() {
     assert(IsOpen() == true);
     return zone_->min_obj_size();
 }
 
-Offset ShelfHeap::Alloc(size_t size)
-{
+Offset ShelfHeap::Alloc(size_t size) {
     assert(IsOpen() == true);
     Offset offset;
     offset = (Offset)zone_->alloc(size);
@@ -214,54 +199,44 @@ Offset ShelfHeap::Alloc(size_t size)
     return offset;
 }
 
-void ShelfHeap::Free(Offset offset)
-{
+void ShelfHeap::Free(Offset offset) {
     assert(IsOpen() == true);
     zone_->free(offset);
     LOG(trace) << "ShelfHeap::Free " << offset;
 }
 
-bool ShelfHeap::IsValidOffset(Offset offset)
-{
+bool ShelfHeap::IsValidOffset(Offset offset) {
     assert(IsOpen() == true);
     return zone_->IsValidOffset(offset);
 }
 
-bool ShelfHeap::IsValidPtr(void *addr)
-{
+bool ShelfHeap::IsValidPtr(void *addr) {
     assert(IsOpen() == true);
-    if (addr < addr_)
-    {
+    if (addr < addr_) {
         return false;
-    }
-    else
-    {
-        Offset offset = (Offset)((char*)addr - (char*)addr_);
+    } else {
+        Offset offset = (Offset)((char *)addr - (char *)addr_);
         return IsValidOffset(offset);
     }
 }
 
-void *ShelfHeap::OffsetToPtr(Offset offset) const
-{
+void *ShelfHeap::OffsetToPtr(Offset offset) const {
     assert(IsOpen() == true);
     assert(zone_->IsValidOffset(offset) == true);
     return zone_->OffsetToPtr(offset);
 }
 
-Offset ShelfHeap::PtrToOffset(void *addr) const
-{
+Offset ShelfHeap::PtrToOffset(void *addr) const {
     assert(IsOpen() == true);
-    assert(addr>zone_);
-    Offset offset = (char*)addr - (char*)zone_;
+    assert(addr > zone_);
+    Offset offset = (char *)addr - (char *)zone_;
     assert(zone_->IsValidOffset(offset) == true);
     return offset;
 }
 
-ErrorCode ShelfHeap::OpenMapShelf(bool use_shelf_manager)
-{
+ErrorCode ShelfHeap::OpenMapShelf(bool use_shelf_manager) {
     // check if the shelf exists
-    if (shelf_.Exist() == false)
-    {
+    if (shelf_.Exist() == false) {
         return SHELF_FILE_NOT_FOUND;
     }
 
@@ -269,63 +244,49 @@ ErrorCode ShelfHeap::OpenMapShelf(bool use_shelf_manager)
 
     // open the shelf
     ret = shelf_.Open(O_RDWR);
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         return ret;
     }
 
     // mmap the shelf
     assert(addr_ == NULL);
-    if (use_shelf_manager == true)
-    {
+    if (use_shelf_manager == true) {
         ret = shelf_.Map(NULL, &addr_);
-    }
-    else
-    {
+    } else {
         size_t size = shelf_.Size();
-        if (size != 0)
-        {
-            ret = shelf_.Map(NULL, size , PROT_READ|PROT_WRITE, MAP_SHARED, 0, &addr_, true);
-            if (ret == NO_ERROR)
-            {
+        if (size != 0) {
+            ret = shelf_.Map(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, 0,
+                             &addr_, true);
+            if (ret == NO_ERROR) {
                 assert(addr_ != NULL);
-            }
-            else
-            {
+            } else {
                 return ret;
             }
         }
     }
     return ret;
 }
-    
-ErrorCode ShelfHeap::UnmapCloseShelf(bool use_shelf_manager, bool unregister)
-{
+
+ErrorCode ShelfHeap::UnmapCloseShelf(bool use_shelf_manager, bool unregister) {
+    size_t size = shelf_.Size();
+    ErrorCode ret = NO_ERROR;
+
     // check if the shelf exists
-    if (shelf_.Exist() == false)
-    {
+    if (shelf_.Exist() == false) {
         return SHELF_FILE_NOT_FOUND;
     }
 
-    ErrorCode ret = NO_ERROR;
-
     // unmmap the shelf
     assert(addr_ != NULL);
-    size_t size = shelf_.Size();
-    if (use_shelf_manager == true)
-    {
+
+    if (use_shelf_manager == true) {
         ret = shelf_.Unmap(addr_, unregister);
-    }
-    else
-    {
+    } else {
         ret = shelf_.Unmap(addr_, size, true);
     }
-    if (ret == NO_ERROR)
-    {
+    if (ret == NO_ERROR) {
         addr_ = NULL;
-    }
-    else
-    {
+    } else {
         return ret;
     }
 
@@ -334,72 +295,70 @@ ErrorCode ShelfHeap::UnmapCloseShelf(bool use_shelf_manager, bool unregister)
     return ret;
 }
 
-void ShelfHeap::Merge()
-{
+void ShelfHeap::Merge() {
     assert(IsOpen() == true);
     zone_->merge();
 }
 
-void ShelfHeap::OfflineRecover()
-{
+void ShelfHeap::OfflineRecover() {
     assert(IsOpen() == true);
     zone_->offline_recover();
 }
 
-void ShelfHeap::OnlineRecover()
-{
+void ShelfHeap::OnlineRecover() {
     assert(IsOpen() == true);
     zone_->online_recover();
 }
 
-void ShelfHeap::Stats()
-{
+void ShelfHeap::Stats() {
     assert(IsOpen() == true);
     zone_->stats();
 }
 
-size_t ShelfHeap::get_bitmap_offset()
-{
+size_t ShelfHeap::get_bitmap_offset() {
     assert(IsOpen() == true);
     return zone_->get_bitmap_offset();
 }
 
-ErrorCode ShelfHeap::Map(Offset offset, size_t size, void* addr_hint, int prot, void **mapped_addr)
-{
+ErrorCode ShelfHeap::Map(Offset offset, size_t size, void *addr_hint, int prot,
+                         void **mapped_addr) {
     ErrorCode ret = NO_ERROR;
     int page_size = getpagesize();
     off_t aligned_start = offset - offset % page_size;
     assert(aligned_start % page_size == 0);
-    off_t aligned_end = (offset + size) + (page_size - (offset + size) % page_size);
+    off_t aligned_end =
+        (offset + size) + (page_size - (offset + size) % page_size);
     assert(aligned_end % page_size == 0);
     size_t aligned_size = aligned_end - aligned_start;
     assert(aligned_size % page_size == 0);
 
     void *aligned_addr = NULL;
-    ret = shelf_.Map(NULL, aligned_size, prot, MAP_SHARED, aligned_start, &aligned_addr, true);
-    if (ret != NO_ERROR)
-    {
+    ret = shelf_.Map(NULL, aligned_size, prot, MAP_SHARED, aligned_start,
+                     &aligned_addr, true);
+    if (ret != NO_ERROR) {
         return MAP_POINTER_FAILED;
     }
 
-    *mapped_addr = (void*)((char*)aligned_addr + offset % page_size);
+    *mapped_addr = (void *)((char *)aligned_addr + offset % page_size);
     return ret;
 }
-ErrorCode ShelfHeap::Unmap(Offset offset, void *mapped_addr, size_t size)
-{
+ErrorCode ShelfHeap::Unmap(Offset offset, void *mapped_addr, size_t size) {
     int page_size = getpagesize();
     off_t aligned_start = offset - offset % page_size;
     assert(aligned_start % page_size == 0);
-    off_t aligned_end = (offset + size) + (page_size - (offset + size) % page_size);
+    off_t aligned_end =
+        (offset + size) + (page_size - (offset + size) % page_size);
     assert(aligned_end % page_size == 0);
     size_t aligned_size = aligned_end - aligned_start;
     assert(aligned_size % page_size == 0);
-    void *aligned_addr = (void*)((char*)mapped_addr - offset % page_size);
-    LOG(trace) << "UnmapPointer: path " << " offset " << aligned_start << " size " << aligned_size
-               << " aligned ptr " << (void*)aligned_addr
-               << " input ptr " << (void*)mapped_addr;
+    void *aligned_addr = (void *)((char *)mapped_addr - offset % page_size);
+    LOG(trace) << "UnmapPointer: path "
+               << " offset " << aligned_start << " size " << aligned_size
+               << " aligned ptr " << (void *)aligned_addr << " input ptr "
+               << (void *)mapped_addr;
     return ShelfFile::Unmap(aligned_addr, aligned_size, false);
 }
 
+ErrorCode ShelfHeap::MarkInvalid() { return shelf_.MarkInvalid(); }
 
 } // namespace nvmm
