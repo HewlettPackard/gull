@@ -100,6 +100,20 @@ inline void fam_atomic_128_compare_and_store(int64_t* addr, int64_t oldval[2], i
     fam_atomic_128_compare_store((int64_t*) addr, (int64_t*) oldval, (int64_t*) newval, (int64_t*)result);
 }
 
+/*
+ * Inline function to use atomic function to read from FAM
+ */
+static inline uint64_t nvmm_read(uint64_t *addr) {
+    return (uint64_t)fam_atomic_u64_read(addr); 
+}
+
+/*
+ * Inline function to use atomic function to read from FAM
+ */
+static inline int64_t nvmm_read(int64_t *addr) {
+    return fam_atomic_64_read(addr); 
+}
+
 inline void explicit_memory_barrier() {
     asm volatile("" ::: "memory");
 }
