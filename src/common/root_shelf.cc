@@ -134,11 +134,11 @@ ErrorCode RootShelf::Create()
     cur+=size;
     memset(cur, 0, size);
 
-    // finally set the magic number
-    fam_atomic_u64_write((uint64_t*)addr, kMagicNum);
-
     // Make sure all updates are persisted     
     fam_persist(addr, kShelfSize);
+
+    // finally set the magic number
+    fam_atomic_u64_write((uint64_t*)addr, kMagicNum);
 
     //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr;
     fam_atomic_unregister_region(addr, kShelfSize);
