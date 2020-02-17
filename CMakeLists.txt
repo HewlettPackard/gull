@@ -49,6 +49,7 @@ endif(${result})
 #
 if(FAME) # FAME
   add_definitions(-DFAME)
+  add_definitions(-DNON_CACHE_COHERENT)
   set(TMPFS_PATH "/lfs")
   message(STATUS "LFS enabled")
   message(STATUS "Lfs location: ${TMPFS_PATH}")
@@ -67,6 +68,7 @@ endif()
 #
 if(LFSWORKAROUND)
   add_definitions(-DLFSWORKAROUND)
+  add_definitions(-DNON_CACHE_COHERENT)
 endif()
 
 if(LFS_BOOK_SIZE)
