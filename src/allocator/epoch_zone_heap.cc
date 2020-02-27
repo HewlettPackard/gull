@@ -116,7 +116,7 @@ inline size_t header_size_round_up() {
 
 EpochZoneHeap::EpochZoneHeap(PoolId pool_id)
     : gh_{NULL}, pool_id_{pool_id}, pool_{pool_id}, rmb_size_{0}, rmb_{NULL},
-      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false},
+      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false}, is_invalid_ {false},
       cleaner_start_{false}, cleaner_stop_{false}, cleaner_running_{false} {}
 
 EpochZoneHeap::~EpochZoneHeap() {
@@ -568,6 +568,15 @@ ErrorCode EpochZoneHeap::Destroy() {
                        << (uint64_t)pool_id_;
             return HEAP_DESTROY_FAILED;
         }
+
+        // Unmap and close the region
+        (void)region_->Unmap(
+              gh_, round_up(sizeof(struct GlobalHeader), kCacheLineSize));
+        ret = region_->Close();
+        if (ret != NO_ERROR) {
+            return HEAP_DESTROY_FAILED;
+        }
+        delete region_;   
 
         std::string path;
         for (int shelf_num = 0; shelf_num < total_data_shelfs; shelf_num++) {
