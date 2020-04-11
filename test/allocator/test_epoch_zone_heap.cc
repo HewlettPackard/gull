@@ -194,7 +194,7 @@ TEST(EpochZoneHeap, Resize) {
     do {
        ptr[i] = heap->Alloc(alloc_size);
        allocated_size += alloc_size;
-       EXPECT_NE(ptr[i],0);       
+       EXPECT_NE(ptr[i],(GlobalPtr)0);       
        EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),1);       
        i++;
     } while(allocated_size < (heap_size - alloc_size)); // Loop until last item.
@@ -212,7 +212,7 @@ TEST(EpochZoneHeap, Resize) {
     do {
         ptr[i] = heap->Alloc(alloc_size);
         allocated_size += alloc_size;
-        EXPECT_NE(ptr[i],0);
+        EXPECT_NE(ptr[i],(GlobalPtr)0);
         EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),2);
         i++;
     } while(allocated_size < (heap_size - alloc_size)); // Loop until last item.
@@ -259,23 +259,23 @@ TEST(EpochZoneHeap, MultipleResize) {
 #endif
     for(i=0;i<total_shelfs;i++) {
        ptr[i] = heap->Alloc(alloc_size);
-       EXPECT_NE(ptr[i],0);
+       EXPECT_NE(ptr[i],(GlobalPtr)0);
        EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),i+1);
        ptr_fail = heap->Alloc(alloc_size);
-       EXPECT_EQ(ptr_fail,0);
+       EXPECT_EQ(ptr_fail,(GlobalPtr)0);
        heap_size += resize_size;
        EXPECT_EQ(heap->Resize(heap_size), NO_ERROR);       
        EXPECT_EQ(heap->Size(), heap_size); 
     }
     ptr[i] = heap->Alloc(alloc_size);
-    EXPECT_NE(ptr[i],0);
+    EXPECT_NE(ptr[i],(GlobalPtr)0);
     EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),i+1);
     ptr_fail = heap->Alloc(alloc_size);
-    EXPECT_EQ(ptr_fail,0);
+    EXPECT_EQ(ptr_fail,(GlobalPtr)0);
     
     heap->Free(ptr[i]);    
     ptr[i] = heap->Alloc(alloc_size);
-    EXPECT_NE(ptr[i],0);
+    EXPECT_NE(ptr[i],(GlobalPtr)0);
     EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),i+1);
 
     for(j=0;j<total_shelfs;j++) {
@@ -319,24 +319,24 @@ TEST(EpochZoneHeap, MultipleResizeBoundary) {
     // total_shelfs-1,as we have one shelf already created
     for(i=0;i<total_resize_count;i++) {
        ptr[i] = heap->Alloc(alloc_size);
-       EXPECT_NE(ptr[i],0);
-       EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),i+1);
+       EXPECT_NE(ptr[i],(GlobalPtr)0);
+       EXPECT_EQ((uint32_t)ptr[i].GetShelfId().GetShelfIndex(),i+1);
        ptr_fail = heap->Alloc(alloc_size);
-       EXPECT_EQ(ptr_fail,0);
+       EXPECT_EQ(ptr_fail,(GlobalPtr)0);
        heap_size += resize_size;
        EXPECT_EQ(heap->Resize(heap_size), NO_ERROR);       
        EXPECT_EQ(heap->Size(), heap_size); 
     }
     ptr[i] = heap->Alloc(alloc_size);
-    EXPECT_NE(ptr[i],0);
-    EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),i+1);
+    EXPECT_NE(ptr[i],(GlobalPtr)0);
+    EXPECT_EQ((uint32_t)ptr[i].GetShelfId().GetShelfIndex(),i+1);
     ptr_fail = heap->Alloc(alloc_size);
-    EXPECT_EQ(ptr_fail,0);
+    EXPECT_EQ(ptr_fail,(GlobalPtr)0);
     
     heap->Free(ptr[i]);    
     ptr[i] = heap->Alloc(alloc_size);
-    EXPECT_NE(ptr[i],0);
-    EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),i+1);
+    EXPECT_NE(ptr[i],(GlobalPtr)0);
+    EXPECT_EQ((uint32_t)ptr[i].GetShelfId().GetShelfIndex(),i+1);
 
     for(j=0;j<(total_resize_count + 1);j++) {
         heap->Free(ptr[j]);
@@ -378,10 +378,10 @@ TEST(EpochZoneHeap, MultipleResizeBoundaryFail) {
     // and one more shelf for header
     for(i=0;i<total_resize_count;i++) {
        ptr[i] = heap->Alloc(alloc_size);
-       EXPECT_NE(ptr[i],0);
-       EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),i+1);
+       EXPECT_NE(ptr[i],(GlobalPtr)0);
+       EXPECT_EQ((uint32_t)ptr[i].GetShelfId().GetShelfIndex(),i+1);
        ptr_fail = heap->Alloc(alloc_size);
-       EXPECT_EQ(ptr_fail,0);
+       EXPECT_EQ(ptr_fail,(GlobalPtr)0);
        heap_size += resize_size;
        EXPECT_EQ(heap->Resize(heap_size), NO_ERROR);       
        EXPECT_EQ(heap->Size(), heap_size); 
@@ -427,11 +427,11 @@ TEST(EpochZoneHeap, SmallerResize) {
 
     for(i=0;i<min_alloc_size-1;i++) {
        ptr[i] = heap->Alloc(alloc_size);
-       EXPECT_NE(ptr[i],0);
+       EXPECT_NE(ptr[i],(GlobalPtr)0);
        EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),1);
     }
     ptr[i] = heap->Alloc(alloc_size);
-    EXPECT_EQ(ptr[i],0);
+    EXPECT_EQ(ptr[i],(GlobalPtr)0);
     
     // Since new size is lesser, resize wont do anything
     EXPECT_EQ(NO_ERROR, heap->Resize(new_size));
@@ -470,11 +470,11 @@ TEST(EpochZoneHeap, PowerOfTwoResize) {
 
     for(i=0;i<min_alloc_size-1;i++) {
        ptr[i] = heap->Alloc(alloc_size);
-       EXPECT_NE(ptr[i],0);
+       EXPECT_NE(ptr[i],(GlobalPtr)0);
        EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),1);
     }
     ptr[i] = heap->Alloc(alloc_size);
-    EXPECT_EQ(ptr[i],0);
+    EXPECT_EQ(ptr[i],(GlobalPtr)0);
     
     // Since new size is lesser, resize wont do anything
     EXPECT_EQ(NO_ERROR, heap->Resize(new_size));
@@ -515,11 +515,11 @@ TEST(EpochZoneHeap, OffsetAllocResize) {
        ptr[i] = heap->AllocOffset(alloc_size);
        allocated_size += alloc_size;
        std::cout <<"ptr = "<<ptr[i]<<std::endl;
-       EXPECT_NE(ptr[i],0);
+       EXPECT_NE(ptr[i],(GlobalPtr)0);
        EXPECT_EQ((int)((GlobalPtr)ptr[i]).GetShelfId().GetShelfIndex(),0);
     } while(allocated_size < (heap_size - alloc_size)); // Loop until last item.
     ptr[i] = heap->Alloc(alloc_size);
-    EXPECT_EQ(ptr[i],0);
+    EXPECT_EQ(ptr[i],(GlobalPtr)0);
 
     heap_size = heap_size * 2;
     EXPECT_EQ(NO_ERROR, heap->Resize(heap_size));
@@ -531,7 +531,7 @@ TEST(EpochZoneHeap, OffsetAllocResize) {
        ptr[i] = heap->AllocOffset(alloc_size);
        allocated_size += alloc_size;
        std::cout <<"ptr = "<<ptr[i]<<std::endl;
-       EXPECT_NE(ptr[i],0);
+       EXPECT_NE(ptr[i],(GlobalPtr)0);
        EXPECT_EQ((int)((GlobalPtr)ptr[i]).GetShelfId().GetShelfIndex(),1);
     } while(allocated_size < (heap_size - alloc_size)); // Loop until last item.
 
@@ -574,7 +574,7 @@ TEST(EpochZoneHeap, AllocResize) {
     do {
        ptr[i] = heap->Alloc(alloc_size);
        allocated_size += alloc_size;
-       EXPECT_NE(ptr[i],0);       
+       EXPECT_NE(ptr[i],(GlobalPtr)0);       
        EXPECT_EQ((int)ptr[i].GetShelfId().GetShelfIndex(),1);       
        i++;
     } while(allocated_size < (heap_size - alloc_size)); // Loop until last item.
@@ -643,24 +643,24 @@ TEST(EpochZoneHeap, DelayedFreeResize) {
         e1 = op.reported_epoch();
         std::cout << "first epoch " << e1 << std::endl;
         ptr1 = heap->Alloc(op, alloc_size);
-        EXPECT_NE(0,ptr1);
+        EXPECT_NE((GlobalPtr)0,ptr1);
         heap->Free(op, ptr1);
         // allocate again, because of delayed free, free will not happen
         // and the alloc will fail.
         GlobalPtr ptr2 = heap->Alloc(op, alloc_size);
-        EXPECT_EQ(0, ptr2);
+        EXPECT_EQ((GlobalPtr)0, ptr2);
 
         // First shelf is full, Resize and create one more shelf
         heap->Resize(heap_size * 2);
 
         // Alloc from next shelf
         ptr3 = heap->Alloc(op, alloc_size);
-        EXPECT_NE(0,ptr3); 
+        EXPECT_NE((GlobalPtr)0,ptr3); 
         heap->Free(op, ptr3);
         // allocate again, because of delayed free, free will not happen
         // and the alloc will fail.
         ptr2 = heap->Alloc(op, alloc_size);
-        EXPECT_EQ(0, ptr2);
+        EXPECT_EQ((GlobalPtr)0, ptr2);
     }
 
     // wait a few epoches and make sure the background thread picks up this
@@ -767,7 +767,7 @@ TEST(EpochZoneHeap, MultipleDelayedFreeResize) {
         // allocate again, because of delayed free, free will not happen
         // and the alloc will fail.
         ptr = heap->Alloc(op, alloc_size);
-        EXPECT_EQ(0, ptr);
+        EXPECT_EQ((GlobalPtr)0, ptr);
     }
      
     // wait a few epoches and make sure the background thread picks up this
@@ -807,12 +807,12 @@ TEST(EpochZoneHeap, MultipleDelayedFreeResize) {
         // Alloc should from first shelf. Verify.
         for(int i = 0;i < total_allocs;i++) {
             GlobalPtr ptr = heap->Alloc(op, alloc_size);
-            EXPECT_NE(ptr,0);
+            EXPECT_NE(ptr,(GlobalPtr)0);
             heap->Free(op, ptr);
         }
         // This allocate should fail
         ptr = heap->Alloc(op, alloc_size);
-        EXPECT_EQ(0, ptr);
+        EXPECT_EQ((GlobalPtr)0, ptr);
     }
 
     // destroy the heap
@@ -875,7 +875,7 @@ TEST(EpochZoneHeap, MultipleDelayedFreeResizeClose) {
         // allocate again, because of delayed free, free will not happen
         // and the alloc will fail.
         ptr = heap->Alloc(op, alloc_size);
-        EXPECT_EQ(0, ptr);
+        EXPECT_EQ((GlobalPtr)0, ptr);
     }
     // Close the heap
     EXPECT_EQ(NO_ERROR, heap->Close());
@@ -919,12 +919,12 @@ TEST(EpochZoneHeap, MultipleDelayedFreeResizeClose) {
         // Alloc should from first shelf. Verify.
         for(int i = 0;i < total_allocs;i++) {
             GlobalPtr ptr = heap->Alloc(op, alloc_size);
-            EXPECT_NE(ptr,0);
+            EXPECT_NE(ptr,(GlobalPtr)0);
             heap->Free(op, ptr);
         }
         // This allocate should fail
         ptr = heap->Alloc(op, alloc_size);
-        EXPECT_EQ(0, ptr);
+        EXPECT_EQ((GlobalPtr)0, ptr);
     }
 
     // destroy the heap
@@ -954,18 +954,18 @@ TEST(EpochZoneHeap, Permissions) {
 
     mode_t mode;
     EXPECT_EQ(NO_ERROR, heap->GetPermission(&mode));
-    EXPECT_NE(0, mode & S_IRGRP);
-    EXPECT_EQ(0, mode & S_IWGRP);
+    EXPECT_NE((mode_t)0, mode & S_IRGRP);
+    EXPECT_EQ((mode_t)0, mode & S_IWGRP);
 
     EXPECT_EQ(NO_ERROR, heap->SetPermission(mode | S_IWGRP));
     EXPECT_EQ(NO_ERROR, heap->GetPermission(&mode));
-    EXPECT_NE(0, mode & S_IWGRP);
+    EXPECT_NE((mode_t)0, mode & S_IWGRP);
 
     EXPECT_EQ(NO_ERROR,heap->Resize(size * 2));    
 
     EXPECT_EQ(NO_ERROR, heap->SetPermission(S_IRUSR | S_IWUSR));
     EXPECT_EQ(NO_ERROR, heap->GetPermission(&mode));
-    EXPECT_EQ(0, mode & (S_IRGRP | S_IWGRP));
+    EXPECT_EQ((mode_t)0, mode & (S_IRGRP | S_IWGRP));
 
     EXPECT_EQ(NO_ERROR, heap->Close());
     delete heap;
@@ -1197,6 +1197,83 @@ TEST(EpochZoneHeap, MergeAllocFree) {
     }
 
     heap->Merge();
+
+    // destroy the heap
+    EXPECT_EQ(NO_ERROR, heap->Close());
+    delete heap;
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
+    EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
+}
+
+// No delayed free - Disable backgroundWorker thread
+TEST(EpochZoneHeap, NoDelayedFree) {
+    PoolId pool_id = 1;
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
+
+    MemoryManager *mm = MemoryManager::GetInstance();
+    EpochManager *em = EpochManager::GetInstance();
+    Heap *heap = NULL;
+
+    // create a heap
+    EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
+    EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
+
+    // get the heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open(NVMM_NO_BG_THREAD));
+
+    EpochCounter e1;
+    GlobalPtr ptr1;
+
+    // allocate & delayed free
+    {
+        EpochOp op(em);
+        e1 = op.reported_epoch();
+        std::cout << "first epoch " << e1 << std::endl;
+        ptr1 = heap->Alloc(op, sizeof(int));
+        heap->Free(op, ptr1);
+    }
+
+    // wait a few epoches and make sure the background thread (if it had existed) 
+    // picks up this chunk and frees it
+    EpochCounter e2;
+    while (1) {
+        {
+            // Begin epoch in a new scope block so that we exit the epoch when
+            // we out of scope and don't block others when we then sleep.
+            {
+                EpochOp op(em);
+                e2 = op.reported_epoch();
+            }
+            if (e2 - e1 >= 3 && e2 % 5 == (e1 + 3) % 5) {
+                std::cout << "sleeping at epoch " << e2 << std::endl;
+                sleep(1); // making sure the background thread wakes up in this
+                          // epoch.
+                break;
+            }
+        }
+    }
+
+    while (1) {
+        {
+            EpochOp op(em);
+            EpochCounter e3 = op.reported_epoch();
+            if (e3 > e2) {
+                break;
+            }
+        }
+    }
+
+    // Since BackgroundWorker thread is disabled, delayed free will not take place.
+    // Next allocation will get different pointer.
+    {
+        EpochOp op(em);
+        std::cout << "final epoch " << op.reported_epoch() << std::endl;
+        GlobalPtr ptr2 = heap->Alloc(op, sizeof(int));
+        EXPECT_NE(ptr1, ptr2);
+        heap->Free(ptr2);
+    }
 
     // destroy the heap
     EXPECT_EQ(NO_ERROR, heap->Close());
