@@ -31,11 +31,13 @@
 
 namespace nvmm {
 
+#define NVMM_NO_BG_THREAD 0x0001
+
 class Heap {
   public:
     virtual ~Heap(){};
 
-    virtual ErrorCode Open() = 0;
+    virtual ErrorCode Open(int flags = 0) = 0;
     virtual ErrorCode Close() = 0;
     virtual bool IsOpen() = 0;
     virtual bool IsInvalid() = 0;
