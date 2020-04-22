@@ -1274,6 +1274,17 @@ TEST(EpochZoneHeap, NoDelayedFree) {
         EXPECT_NE(ptr1, ptr2);
         heap->Free(ptr2);
     }
+    // Call Offline Free - It frees delayed freed data items
+    heap->OfflineFree();
+    {
+        EpochOp op(em);
+        std::cout << "final epoch " << op.reported_epoch() << std::endl;
+        GlobalPtr ptr2 = heap->Alloc(op, sizeof(int));
+        std::cout << "ptr2: "<<ptr2<<" ptr1: "<<ptr1<<std::endl;
+        // Offline free should have freed it, So ptr1 will be re-allocated.
+        EXPECT_EQ(ptr1, ptr2);
+        heap->Free(ptr2);
+    }
 
     // destroy the heap
     EXPECT_EQ(NO_ERROR, heap->Close());

@@ -1315,10 +1315,30 @@ void EpochZoneHeap::Stats() {
         rmb_[shelf_num]->Stats();
 }
 
+/* 
+ * Offlinefree will free delayed free items from all the epoch queues.
+ * It parses queues from all the shelfs.
+ *
+ * Note : This doesnt take epochOp lock, operate with care. 
+ * It has to be called only when user is certain that all the items can be 
+ * freed.
+ */
 void EpochZoneHeap::OfflineFree() {
     ASSERT_IS_OPEN();
-    // temperary increase freecnt
-    kFreeCnt = 1000000;
+    OpenNewShelfs();    
+    for (int shelf_num = 0; shelf_num < (int)total_mapped_shelfs_; shelf_num++) {
+         for(int e = 0; e < kListCnt; e++) {
+             while (1) {
+                   Offset offset = global_list_[shelf_num][e].pop(
+                      bitmap_start_[shelf_num]) * min_obj_size_;
+                   if (offset == 0)
+                      break;
+                   // TODO: a crash here will leak memory
+                   LOG(trace) << " freeing block [" << offset << "]";
+                   rmb_[shelf_num]->Free(offset);
+            }
+         }
+    }
 }
 
 } // namespace nvmm
