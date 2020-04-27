@@ -116,8 +116,9 @@ inline size_t header_size_round_up() {
 
 EpochZoneHeap::EpochZoneHeap(PoolId pool_id)
     : gh_{NULL}, pool_id_{pool_id}, pool_{pool_id}, rmb_size_{0}, rmb_{NULL},
-      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false}, is_invalid_ {false},
-      cleaner_start_{false}, cleaner_stop_{false}, cleaner_running_{false} {}
+      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false}, 
+      is_invalid_ {false}, no_bgthread_{false}, cleaner_start_{false}, 
+      cleaner_stop_{false}, cleaner_running_{false} {}
 
 EpochZoneHeap::~EpochZoneHeap() {
     if (IsOpen() == true) {
@@ -620,7 +621,7 @@ ErrorCode EpochZoneHeap::Destroy() {
 
 bool EpochZoneHeap::Exist() { return pool_.Exist(); }
 
-ErrorCode EpochZoneHeap::Open() {
+ErrorCode EpochZoneHeap::Open(int flags) {
     TRACE();
     LOG(trace) << "Open Heap " << (uint64_t)pool_id_;
     CHECK_IS_CLOSED();
@@ -725,6 +726,12 @@ ErrorCode EpochZoneHeap::Open() {
     min_obj_size_ = rmb_[0]->MinAllocSize();
     is_open_ = true;
 
+    // If No Background thread flag specified, return without spawning threads
+    if(flags & NVMM_NO_BG_THREAD){ 
+       no_bgthread_ = true;
+       return NO_ERROR;
+    }
+
     // start the cleaner thread
     int rc = StartWorker();
     if (rc != 0) {
@@ -742,6 +749,7 @@ ErrorCode EpochZoneHeap::Open() {
     // wait for the cleaner to be running
     std::unique_lock<std::mutex> mutex(cleaner_mutex_);
     running_cv_.wait(mutex, [this] { return cleaner_running_ == true; });
+    no_bgthread_ = false;
     return ret;
 }
 
@@ -751,7 +759,7 @@ ErrorCode EpochZoneHeap::Close() {
     CHECK_IS_OPEN();
     ErrorCode ret = NO_ERROR;
 
-    if (!is_invalid_) {
+    if (!is_invalid_ && (no_bgthread_ == false)) {
         // stop the cleaner thread
         int rc = StopWorker();
         if (rc != 0) {
@@ -1307,10 +1315,30 @@ void EpochZoneHeap::Stats() {
         rmb_[shelf_num]->Stats();
 }
 
+/* 
+ * Offlinefree will free delayed free items from all the epoch queues.
+ * It parses queues from all the shelfs.
+ *
+ * Note : This doesnt take epochOp lock, operate with care. 
+ * It has to be called only when user is certain that all the items can be 
+ * freed.
+ */
 void EpochZoneHeap::OfflineFree() {
     ASSERT_IS_OPEN();
-    // temperary increase freecnt
-    kFreeCnt = 1000000;
+    OpenNewShelfs();    
+    for (int shelf_num = 0; shelf_num < (int)total_mapped_shelfs_; shelf_num++) {
+         for(int e = 0; e < kListCnt; e++) {
+             while (1) {
+                   Offset offset = global_list_[shelf_num][e].pop(
+                      bitmap_start_[shelf_num]) * min_obj_size_;
+                   if (offset == 0)
+                      break;
+                   // TODO: a crash here will leak memory
+                   LOG(trace) << " freeing block [" << offset << "]";
+                   rmb_[shelf_num]->Free(offset);
+            }
+         }
+    }
 }
 
 } // namespace nvmm

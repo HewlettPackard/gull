@@ -80,7 +80,7 @@ class EpochZoneHeap : public Heap {
     ErrorCode SetPermission(mode_t mode);
     ErrorCode GetPermission(mode_t *mode);
 
-    ErrorCode Open();
+    ErrorCode Open(int flags = 0);
     ErrorCode Close();
     size_t Size();
     bool IsOpen() { return is_open_; }
@@ -159,6 +159,7 @@ class EpochZoneHeap : public Heap {
     std::thread cleaner_thread_;
     std::mutex cleaner_mutex_;
     std::condition_variable running_cv_;
+    bool no_bgthread_;
     bool cleaner_start_;
     bool cleaner_stop_;
     bool cleaner_running_;
