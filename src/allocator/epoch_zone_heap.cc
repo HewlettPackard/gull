@@ -25,21 +25,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <string>
 #include <assert.h>
+#include <string>
 
 #include "nvmm/error_code.h"
-#include "nvmm/global_ptr.h"
-#include "nvmm/shelf_id.h"
-#include "nvmm/heap.h"
 #include "nvmm/fam.h"
-#include "nvmm/memory_manager.h"
+#include "nvmm/global_ptr.h"
+#include "nvmm/heap.h"
 #include "nvmm/log.h"
+#include "nvmm/memory_manager.h"
+#include "nvmm/shelf_id.h"
 
 #include "shelf_mgmt/pool.h"
 
-#include "shelf_usage/zone_shelf_heap.h"
 #include "shelf_usage/shelf_region.h"
+#include "shelf_usage/zone_shelf_heap.h"
 
 #include "nvmm/epoch_manager.h"
 
@@ -47,86 +47,78 @@
 
 namespace nvmm {
 
-#define CHECK_IS_CLOSED()                                  \
-if (IsOpen() == true) {                                    \
-       LOG(error) <<"Heap is already open";                \
-       return HEAP_IS_OPEN;                                \
-}
+#define CHECK_IS_CLOSED()                                                      \
+    if (IsOpen() == true) {                                                    \
+        LOG(error) << "Heap is already open";                                  \
+        return HEAP_IS_OPEN;                                                   \
+    }
 
+#define CHECK_IS_OPEN()                                                        \
+    if (IsOpen() != true) {                                                    \
+        LOG(error) << "Heap is not open";                                      \
+        return HEAP_NOT_OPEN;                                                  \
+    }
 
-#define CHECK_IS_OPEN()                              \
-if (IsOpen() != true) {                                    \
-       LOG(error) <<"Heap is not open";                    \
-       return HEAP_NOT_OPEN;                               \
-}
+#define ASSERT_IS_CLOSED() assert(IsOpen() != true);
+#define ASSERT_IS_OPEN() assert(IsOpen() == true);
 
-#define ASSERT_IS_CLOSED()  assert (IsOpen() != true);
-#define ASSERT_IS_OPEN()  assert (IsOpen() == true);
-
-//If LFS_BOOK_SIZE is not passed, set it to 8GB.
+// If LFS_BOOK_SIZE is not passed, set it to 8GB.
 #ifndef LFS_BOOK_SIZE
-#define LFS_BOOK_SIZE (8*1024*1024*1024UL)
+#define LFS_BOOK_SIZE (8 * 1024 * 1024 * 1024UL)
 #endif
 
-inline uint64_t power_of_two(uint64_t n)
-{
-        uint64_t power = 0;
-        if (n == 0) {
-                return 0;
+inline uint64_t power_of_two(uint64_t n) {
+    uint64_t power = 0;
+    if (n == 0) {
+        return 0;
+    }
+    while (n != 1) {
+        if (n % 2 != 0) {
+            return 0;
         }
-        while (n != 1) {
-                if (n % 2 != 0) {
-                        return 0;
-                }
-                n = n >> 1;
-                power = power + 1;
-        }
-        return power;
+        n = n >> 1;
+        power = power + 1;
+    }
+    return power;
 }
 
-inline bool is_power_of_two(uint64_t n)
-{
-        return ((n != 0) && !(n & (n-1)));
+inline bool is_power_of_two(uint64_t n) { return ((n != 0) && !(n & (n - 1))); }
+
+inline uint64_t next_power_of_two(uint64_t n) {
+    if (is_power_of_two(n)) {
+        return n;
+    } else {
+        n |= n >> 1;
+        n |= n >> 2;
+        n |= n >> 4;
+        n |= n >> 8;
+        n |= n >> 16;
+        n |= n >> 32;
+        return n + 1;
+    }
 }
 
-inline uint64_t next_power_of_two(uint64_t n)
-{
-        if (is_power_of_two(n)) {
-                return n;
-        } else {
-                n |= n >> 1;
-                n |= n >> 2;
-                n |= n >> 4;
-                n |= n >> 8;
-                n |= n >> 16;
-                n |= n >> 32;
-                return n + 1;
-        }
-}
-
-
-// 
+//
 // There is a bug in current LFS code, which does not mmap from right offset.
-// Bug: mmap from any offset incorrectly mmaps from boundaries of Book size 
+// Bug: mmap from any offset incorrectly mmaps from boundaries of Book size
 // (8GB default).
 //
 // So we create header's in case of LFS as the multiple of 8GB (Book size).
 // Header extention in case of a Resize also will be multiple of 8GB(Book size).
 //
-inline size_t header_size_round_up () {
+inline size_t header_size_round_up() {
 #ifdef LFSWORKAROUND
-   return round_up(LFS_BOOK_SIZE, getpagesize());
+    return round_up(LFS_BOOK_SIZE, getpagesize());
 #else
-   return getpagesize();
+    return getpagesize();
 #endif
 }
 
-
 EpochZoneHeap::EpochZoneHeap(PoolId pool_id)
-    : gh_{ NULL }, pool_id_{ pool_id }, pool_{ pool_id }, rmb_size_{ 0 }, rmb_{ NULL },
-      region_{ NULL }, mapped_addr_{ NULL }, header_{ NULL },
-      is_open_{ false }, cleaner_start_{ false }, cleaner_stop_{ false },
-      cleaner_running_{ false } {}
+    : gh_{NULL}, pool_id_{pool_id}, pool_{pool_id}, rmb_size_{0}, rmb_{NULL},
+      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false}, 
+      is_invalid_ {false}, no_bgthread_{false}, cleaner_start_{false}, 
+      cleaner_stop_{false}, cleaner_running_{false} {}
 
 EpochZoneHeap::~EpochZoneHeap() {
     if (IsOpen() == true) {
@@ -135,8 +127,8 @@ EpochZoneHeap::~EpochZoneHeap() {
 }
 
 // Creates a heap with size next power of two of the passed size
-ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size, mode_t mode)
-{
+ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
+                                mode_t mode) {
     TRACE();
 
     //
@@ -150,9 +142,9 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size, mode_t
         return POOL_FOUND;
     } else {
         ErrorCode ret = NO_ERROR;
-      
+
         // Round off the shelf size to next power of 2
-        shelf_size = next_power_of_two (shelf_size);
+        shelf_size = next_power_of_two(shelf_size);
 
         // create an empty pool
         ret = pool_.Create(shelf_size, mode);
@@ -168,7 +160,8 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size, mode_t
         ShelfIndex shelf_idx;
 
         shelf_idx = kHeaderIdx;
-        header_size_ = get_header_size_from_size(shelf_size, min_alloc_size, shelf_idx);
+        header_size_ =
+            get_header_size_from_size(shelf_size, min_alloc_size, shelf_idx);
         ret = pool_.AddShelf(shelf_idx,
                              [this](ShelfFile *shelf, size_t shelf_size) {
                                  ShelfRegion shelf_region(shelf->GetPath());
@@ -200,7 +193,7 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size, mode_t
         }
 
         // map region
-        //size_t header_size = region_->Size();
+        // size_t header_size = region_->Size();
         ret = region_->Map(NULL, header_size_, PROT_READ | PROT_WRITE,
                            MAP_SHARED, 0, (void **)&mapped_addr_[shelf_num]);
         if (ret != NO_ERROR) {
@@ -213,30 +206,30 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size, mode_t
 
         // reserve the 5 global lists for delayed free
         uint64_t reserved =
-            round_up(kListCnt * sizeof(ZoneEntryStack),kCacheLineSize) + 
-                     round_up(sizeof(struct GlobalHeader),kCacheLineSize);
+            round_up(kListCnt * sizeof(ZoneEntryStack), kCacheLineSize) +
+            round_up(sizeof(struct GlobalHeader), kCacheLineSize);
 
         fam_memset_persist(mapped_addr_[shelf_num], 0, reserved);
 
         // use this region to help create the zone
-        header_[shelf_num] = (void *)((char *)mapped_addr_[shelf_num] + reserved);
+        header_[shelf_num] =
+            (void *)((char *)mapped_addr_[shelf_num] + reserved);
 
         shelf_idx = kZoneIdx;
         min_obj_size_ = min_alloc_size;
         header_size_ = header_size_ - reserved;
         ret = pool_.AddShelf(shelf_idx,
-                             [this](ShelfFile *shelf, size_t shelf_size)
-                            {
-                                ShelfHeap shelf_heap(shelf->GetPath());
-                                return shelf_heap.Create(shelf_size, header_[0], header_size_, min_obj_size_);
-                            },
-                            false,
-                            mode
-                            );
-        if (ret != NO_ERROR)
-        {
+                             [this](ShelfFile *shelf, size_t shelf_size) {
+                                 ShelfHeap shelf_heap(shelf->GetPath());
+                                 return shelf_heap.Create(
+                                     shelf_size, header_[0], header_size_,
+                                     min_obj_size_);
+                             },
+                             false, mode);
+        if (ret != NO_ERROR) {
             // unmap and close the region
-            ret = region_->Unmap(mapped_addr_[shelf_num], header_size_ + reserved);
+            ret = region_->Unmap(mapped_addr_[shelf_num],
+                                 header_size_ + reserved);
             if (ret != NO_ERROR) {
                 return HEAP_CREATE_FAILED;
             }
@@ -252,10 +245,10 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size, mode_t
         // TODO: Do we need atomic operation here? May not, As create
         // is already protected by locks.
         //
-        fam_atomic_u64_write (&gh_->sz[0].headersize, header_size_ + reserved);
-        fam_atomic_u64_write (&gh_->sz[0].headeroffset, 0);
-        fam_atomic_u64_write (&gh_->sz[0].shelfsize, shelf_size);
-        fam_atomic_u64_write (&gh_->total_shelfs, 1);
+        fam_atomic_u64_write(&gh_->sz[0].headersize, header_size_ + reserved);
+        fam_atomic_u64_write(&gh_->sz[0].headeroffset, 0);
+        fam_atomic_u64_write(&gh_->sz[0].shelfsize, shelf_size);
+        fam_atomic_u64_write(&gh_->total_shelfs, 1);
 
         // unmap and close the region
         ret = region_->Unmap(mapped_addr_[shelf_num], header_size_ + reserved);
@@ -279,97 +272,99 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size, mode_t
 
 //
 // 1. The input to the resize is new total size
-//    If new size less than existing size, we do not need to do anything 
+//    If new size less than existing size, we do not need to do anything
 //    - return NO_ERROR.
 //
-// 2. Zone has a restriction that every shelf should be a power of 2. 
+// 2. Zone has a restriction that every shelf should be a power of 2.
 //    So convert the size to next power of 2.
 //
 ErrorCode EpochZoneHeap::Resize(size_t size) {
     TRACE();
     // TODO: Currently resize can be performed only on open heap
     if (IsOpen() != true) {
-       LOG(error) <<"Heap is not open";
-       return HEAP_NOT_OPEN;
+        LOG(error) << "Heap is not open";
+        return HEAP_NOT_OPEN;
     }
     LOG(trace) << "Resize Heap, size: " << size;
     ErrorCode ret = NO_ERROR;
-   
+
     // Set the resize in progress bit
     uint64_t old_value = 0;
     uint64_t new_value = OP_RESIZE;
-    old_value = fam_atomic_u64_compare_and_store(&gh_->op_in_progress, 0,
-                                                 new_value);
+    old_value =
+        fam_atomic_u64_compare_and_store(&gh_->op_in_progress, 0, new_value);
     if (old_value != 0) {
         return HEAP_BUSY;
     }
 
     mode_t perm;
-    // Read permission, So that we use latest permission 
+    // Read permission, So that we use latest permission
     ret = region_->GetPermission(&perm);
     if (ret != NO_ERROR) {
-       fam_atomic_u64_write(&gh_->op_in_progress, 0);
-       return HEAP_RESIZE_FAILED;
-    }      
+        fam_atomic_u64_write(&gh_->op_in_progress, 0);
+        return HEAP_RESIZE_FAILED;
+    }
 
     // Get current total data shelfs.
     int shelf_num = get_total_data_shelfs();
-    // We will be able to create kMaxShelfCount - 1 shelfs as one shelf is needed
-    // for header.
-    if(shelf_num >= (Pool::kMaxShelfCount-1)) {
-       fam_atomic_u64_write(&gh_->op_in_progress, 0);
-       return HEAP_RESIZE_FAILED;
+    // We will be able to create kMaxShelfCount - 1 shelfs as one shelf is
+    // needed for header.
+    if (shelf_num >= (Pool::kMaxShelfCount - 1)) {
+        fam_atomic_u64_write(&gh_->op_in_progress, 0);
+        return HEAP_RESIZE_FAILED;
     }
     //
     // We need to get the new header size,
-    // 1. Current total header size, current_header_size 
+    // 1. Current total header size, current_header_size
     // 2. Required header size, new_header_size
     // total_header_size = current_header_size + new_header_size
     //
-    // Get current header size and total shelf size.    
+    // Get current header size and total shelf size.
     size_t current_header_size = get_total_header_size();
     size_t current_total_size = get_total_size();
 
     // If we are already at the required size, Do not resize
-    if(size <= current_total_size) {
-        LOG(trace) << "Already at the specified size, no need to resize, current size: "
-                   <<size<<" Requested size: "<<current_total_size;
+    if (size <= current_total_size) {
+        LOG(trace) << "Already at the specified size, no need to resize, "
+                      "current size: "
+                   << size << " Requested size: " << current_total_size;
         fam_atomic_u64_write(&gh_->op_in_progress, 0);
         return NO_ERROR;
-    }  
+    }
     // Convert the new shelf size to power of 2
     shelf_size_for_create_ = next_power_of_two(size - current_total_size);
-    
-    // Get the required header size for new shelf
-    size_t new_header_size = get_header_size_from_size(shelf_size_for_create_, min_obj_size_, (ShelfIndex)shelf_num);
-    // Add this to total header size
-    size_t total_header_size = new_header_size + current_header_size;                
 
-    
-    // Check if a previous resize has already resized the header more than current required value    
+    // Get the required header size for new shelf
+    size_t new_header_size = get_header_size_from_size(
+        shelf_size_for_create_, min_obj_size_, (ShelfIndex)shelf_num);
+    // Add this to total header size
+    size_t total_header_size = new_header_size + current_header_size;
+
+    // Check if a previous resize has already resized the header more than
+    // current required value
     if (region_->Size() >= total_header_size) {
         LOG(trace) << "Header already resized, skipping resize header";
-    }
-    else {
+    } else {
         // Truncate the header
         ret = region_->Resize(total_header_size);
         if (ret != NO_ERROR) {
-           fam_atomic_u64_write(&gh_->op_in_progress, 0);
-           return ret;
+            fam_atomic_u64_write(&gh_->op_in_progress, 0);
+            return ret;
         }
     }
     // map the header
-    ret = region_->Map(NULL, new_header_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                 current_header_size, (void **)&mapped_addr_[shelf_num]);
+    ret =
+        region_->Map(NULL, new_header_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                     current_header_size, (void **)&mapped_addr_[shelf_num]);
     if (ret != NO_ERROR) {
-        std::cout << "Zone: region map failed " << ret << std::endl;
         LOG(error) << "Zone: region map failed " << (uint64_t)pool_id_;
         fam_atomic_u64_write(&gh_->op_in_progress, 0);
         return HEAP_RESIZE_FAILED;
     }
 
     // Set header_ , global_list_
-    uint64_t reserved = round_up(kListCnt * sizeof(ZoneEntryStack), kCacheLineSize);
+    uint64_t reserved =
+        round_up(kListCnt * sizeof(ZoneEntryStack), kCacheLineSize);
     fam_memset_persist(mapped_addr_[shelf_num], 0, reserved);
 
     header_[shelf_num] = (void *)((char *)mapped_addr_[shelf_num] + reserved);
@@ -380,9 +375,10 @@ ErrorCode EpochZoneHeap::Resize(size_t size) {
 
     // Check if previous unfinished resize has a shelf created.
     // If yes remove the shelf
-    if (pool_.CheckShelf(shelf_idx) == true) {    
-        LOG(trace) << "Zone: Removing shelf created by previous unfinished resize " 
-                   << (uint64_t)pool_id_<<" "<<(int)shelf_idx; 
+    if (pool_.CheckShelf(shelf_idx) == true) {
+        LOG(trace)
+            << "Zone: Removing shelf created by previous unfinished resize "
+            << (uint64_t)pool_id_ << " " << (int)shelf_idx;
         ret = pool_.RemoveShelf(shelf_idx);
         if (ret != NO_ERROR) {
             fam_atomic_u64_write(&gh_->op_in_progress, 0);
@@ -391,27 +387,26 @@ ErrorCode EpochZoneHeap::Resize(size_t size) {
         }
     }
     // Create new shelf
-    ret = pool_.AddShelf(
-        shelf_idx, [this](ShelfFile *shelf, size_t shelf_size) {
-                       ShelfHeap shelf_heap(shelf->GetPath());
-                       return shelf_heap.Create(
-                           shelf_size_for_create_, header_[shelf_id_for_create_ - 1],
-                           header_size_, min_obj_size_);
-                   },
-        false,
-        perm);
+    ret = pool_.AddShelf(shelf_idx,
+                         [this](ShelfFile *shelf, size_t shelf_size) {
+                             ShelfHeap shelf_heap(shelf->GetPath());
+                             return shelf_heap.Create(
+                                 shelf_size_for_create_,
+                                 header_[shelf_id_for_create_ - 1],
+                                 header_size_, min_obj_size_);
+                         },
+                         false, perm);
     if (ret != NO_ERROR) {
         fam_atomic_u64_write(&gh_->op_in_progress, 0);
-        region_->Unmap(mapped_addr_[shelf_num], new_header_size); 
+        region_->Unmap(mapped_addr_[shelf_num], new_header_size);
         return ret;
     }
     // Update the gh_ region
-    fam_atomic_u64_write (&gh_->sz[shelf_num].headersize, new_header_size);
-    fam_atomic_u64_write (&gh_->sz[shelf_num].headeroffset, current_header_size);
-    fam_atomic_u64_write (&gh_->sz[shelf_num].shelfsize, shelf_size_for_create_);
-    fam_atomic_64_fetch_add (&(int64_t&)gh_->total_shelfs, 1);
+    fam_atomic_u64_write(&gh_->sz[shelf_num].headersize, new_header_size);
+    fam_atomic_u64_write(&gh_->sz[shelf_num].headeroffset, current_header_size);
+    fam_atomic_u64_write(&gh_->sz[shelf_num].shelfsize, shelf_size_for_create_);
+    fam_atomic_64_fetch_add(&(int64_t &)gh_->total_shelfs, 1);
     fam_atomic_u64_write(&gh_->op_in_progress, 0);
-
 
     // Open the newly added shelfs
     ret = OpenNewShelfs();
@@ -421,7 +416,7 @@ ErrorCode EpochZoneHeap::Resize(size_t size) {
 //
 // SetPermission : PreConditions : Heap needs to be Opened.
 // @param mode : New permission to be set.
-// 
+//
 // Code Flow :
 // 1. Check if Heap Open, If not Open, return Error.
 // 2. Check if any other metadata operation in progress.
@@ -432,24 +427,23 @@ ErrorCode EpochZoneHeap::Resize(size_t size) {
 // 6. Set permission of header shelf.
 // 7. Reset PERMISSION_CHANGE_IN_PROGRESS bit.
 //
-ErrorCode EpochZoneHeap::SetPermission (mode_t mode) {
+ErrorCode EpochZoneHeap::SetPermission(mode_t mode) {
     TRACE();
 
     if (IsOpen() != true) {
-       LOG(error) <<"Heap is not open";
-       return HEAP_NOT_OPEN;
+        LOG(error) << "Heap is not open";
+        return HEAP_NOT_OPEN;
     }
     LOG(trace) << "ChangePermission, mode: " << mode;
     ErrorCode ret = NO_ERROR;
 
-
     // Set the change permission in progress bit
     uint64_t old_value = 0;
     uint64_t new_value = OP_CHANGE_PERM;
-    old_value = fam_atomic_u64_compare_and_store(&gh_->op_in_progress, 0,
-                                                 new_value);
+    old_value =
+        fam_atomic_u64_compare_and_store(&gh_->op_in_progress, 0, new_value);
     if (old_value != 0) {
-       return HEAP_BUSY;
+        return HEAP_BUSY;
     }
 
     // Check current permission and proposed permission, if it is same
@@ -458,65 +452,64 @@ ErrorCode EpochZoneHeap::SetPermission (mode_t mode) {
     ret = region_->GetPermission(&perm);
     if (ret != NO_ERROR) {
         LOG(fatal) << "SetPermission: Reading current permission failed: "
-                 << ret;
+                   << ret;
         fam_atomic_u64_write(&gh_->op_in_progress, 0);
         return HEAP_SET_PERMISSION_FAILED;
     }
     if ((mode & PERM_MASK) == perm) {
         LOG(trace) << "Already set to requested permission, Returning success";
         fam_atomic_u64_write(&gh_->op_in_progress, 0);
-        return NO_ERROR;   
+        return NO_ERROR;
     }
-       
+
     // Set permission of pool metadata shelf
     ret = pool_.SetPermission(mode);
     if (ret != NO_ERROR) {
-      LOG(fatal) << "SetPermission: MetadataShelf set permission failed:"
-                 << ret;
-      fam_atomic_u64_write(&gh_->op_in_progress, 0);
-      return HEAP_SET_PERMISSION_FAILED;
+        LOG(fatal) << "SetPermission: MetadataShelf set permission failed:"
+                   << ret;
+        fam_atomic_u64_write(&gh_->op_in_progress, 0);
+        return HEAP_SET_PERMISSION_FAILED;
     }
 
     // Open the newly added shelfs
-    ret = OpenNewShelfs();   
+    ret = OpenNewShelfs();
     // Set permission of all shelfs in a loop
-    int total_shelfs = get_total_data_shelfs(); 
-    for (int i=0;i<total_shelfs;i++) {
+    int total_shelfs = get_total_data_shelfs();
+    for (int i = 0; i < total_shelfs; i++) {
         ret = rmb_[i]->SetPermission(mode);
-        if (ret !=NO_ERROR) {
-           LOG(fatal) << "SetPermission: set permission failed for shelf"
-                      << i+1<<" with "<<ret;
-           fam_atomic_u64_write(&gh_->op_in_progress, 0);
-           return HEAP_SET_PERMISSION_FAILED;
-        }          
+        if (ret != NO_ERROR) {
+            LOG(fatal) << "SetPermission: set permission failed for shelf"
+                       << i + 1 << " with " << ret;
+            fam_atomic_u64_write(&gh_->op_in_progress, 0);
+            return HEAP_SET_PERMISSION_FAILED;
+        }
     }
 
     //
-    // Finally, Set permission of header. GetPermission reads the permission of header,
-    // and returns it to user. So the permission of file header is always right.
+    // Finally, Set permission of header. GetPermission reads the permission of
+    // header, and returns it to user. So the permission of file header is
+    // always right.
     //
     ret = region_->SetPermission(mode);
     if (ret != NO_ERROR) {
-      LOG(fatal) << "SetPermission: Header change permission failed:"
-                 << ret;
-      fam_atomic_u64_write(&gh_->op_in_progress, 0);
-      return HEAP_SET_PERMISSION_FAILED;
+        LOG(fatal) << "SetPermission: Header change permission failed:" << ret;
+        fam_atomic_u64_write(&gh_->op_in_progress, 0);
+        return HEAP_SET_PERMISSION_FAILED;
     }
     // Reset in progress bit
-    fam_atomic_u64_write(&gh_->op_in_progress, 0); 
+    fam_atomic_u64_write(&gh_->op_in_progress, 0);
     return NO_ERROR;
 }
 
-ErrorCode EpochZoneHeap::GetPermission (mode_t *mode) {
+ErrorCode EpochZoneHeap::GetPermission(mode_t *mode) {
     TRACE();
     if (IsOpen() == false)
-       return HEAP_GET_PERMISSION_FAILED;
+        return HEAP_GET_PERMISSION_FAILED;
     if (region_->GetPermission(mode) != NO_ERROR) {
-       return HEAP_GET_PERMISSION_FAILED;
+        return HEAP_GET_PERMISSION_FAILED;
     }
     return NO_ERROR;
 }
-
 
 ErrorCode EpochZoneHeap::Destroy() {
     TRACE();
@@ -531,6 +524,40 @@ ErrorCode EpochZoneHeap::Destroy() {
         if (ret != NO_ERROR) {
             return HEAP_DESTROY_FAILED;
         }
+        {
+            std::string path;
+            // get the header shelf
+            ret = pool_.GetShelfPath(kHeaderIdx, path);
+            if (ret != NO_ERROR) {
+                (void)pool_.Close(false);
+                return HEAP_DESTROY_FAILED;
+            }
+            // open region
+            region_ = new ShelfRegion(path);
+            assert(region_ != NULL);
+            ret = region_->Open(O_RDWR);
+            if (ret != NO_ERROR) {
+                LOG(error) << "Zone: region open failed " << (uint64_t)pool_id_;
+                (void)pool_.Close(false);
+                return HEAP_DESTROY_FAILED;
+            }
+
+            // Open gh_
+            ret = region_->Map(
+                NULL, round_up(sizeof(struct GlobalHeader), kCacheLineSize),
+                PROT_READ | PROT_WRITE, MAP_SHARED, 0, (void **)&gh_);
+            if (ret != NO_ERROR) {
+                LOG(error) << "Zone: region map failed " << (uint64_t)pool_id_;
+                ret = region_->Close();
+                if (ret != NO_ERROR) {
+                    return HEAP_DESTROY_FAILED;
+                }
+                delete region_;
+                (void)pool_.Close(false);
+                return HEAP_DESTROY_FAILED;
+            }
+            fam_atomic_u64_write(&gh_->destroy_in_progress, 1);
+        }
         ret = pool_.Recover();
         if (ret != NO_ERROR) {
             LOG(fatal) << "Destroy: Found inconsistency in Heap "
@@ -538,10 +565,19 @@ ErrorCode EpochZoneHeap::Destroy() {
         }
         int total_data_shelfs = get_total_data_shelfs();
         if (total_data_shelfs == -1) {
-           LOG(fatal) << "Destroy: Could not find total data shelfs "
-                      << (uint64_t)pool_id_;
-           return HEAP_DESTROY_FAILED;
+            LOG(fatal) << "Destroy: Could not find total data shelfs "
+                       << (uint64_t)pool_id_;
+            return HEAP_DESTROY_FAILED;
         }
+
+        // Unmap and close the region
+        (void)region_->Unmap(
+              gh_, round_up(sizeof(struct GlobalHeader), kCacheLineSize));
+        ret = region_->Close();
+        if (ret != NO_ERROR) {
+            return HEAP_DESTROY_FAILED;
+        }
+        delete region_;   
 
         std::string path;
         for (int shelf_num = 0; shelf_num < total_data_shelfs; shelf_num++) {
@@ -585,7 +621,7 @@ ErrorCode EpochZoneHeap::Destroy() {
 
 bool EpochZoneHeap::Exist() { return pool_.Exist(); }
 
-ErrorCode EpochZoneHeap::Open() {
+ErrorCode EpochZoneHeap::Open(int flags) {
     TRACE();
     LOG(trace) << "Open Heap " << (uint64_t)pool_id_;
     CHECK_IS_CLOSED();
@@ -625,13 +661,14 @@ ErrorCode EpochZoneHeap::Open() {
     }
 
     // Open gh_
-    ret = region_->Map(NULL, round_up(sizeof(struct GlobalHeader),kCacheLineSize), PROT_READ | PROT_WRITE, MAP_SHARED, 0,
-                       (void **)&gh_);
+    ret = region_->Map(NULL,
+                       round_up(sizeof(struct GlobalHeader), kCacheLineSize),
+                       PROT_READ | PROT_WRITE, MAP_SHARED, 0, (void **)&gh_);
     if (ret != NO_ERROR) {
         LOG(error) << "Zone: region map failed " << (uint64_t)pool_id_;
         ret = region_->Close();
         if (ret != NO_ERROR) {
-           return HEAP_OPEN_FAILED;
+            return HEAP_OPEN_FAILED;
         }
         delete region_;
         (void)pool_.Close(false);
@@ -645,58 +682,74 @@ ErrorCode EpochZoneHeap::Open() {
     do {
         ret = OpenShelf(shelf_num);
         if (ret != NO_ERROR) {
-           LOG(error) << "ZoneHeap: OpenShelf  " << shelf_num << "failed for : " << (uint64_t)pool_id_;
-           // Close all the OpenShelfs() and return error.
-           // The current shelf will be closed by OpenShelf code, 
-           // Explicitely close other shelfs
-           while(shelf_num > 0)
-           {
-              shelf_num--;              
-              ret = CloseShelf(shelf_num);
-              if (ret != NO_ERROR) {
-                 LOG(trace) << "ZoneHeap: Open Error Handling, CloseShelf  " 
-                            << shelf_num << "failed for : " << (uint64_t)pool_id_;
-                 // Do not return error here, we will attempt to close everything.
-              }
-           } 
+            LOG(error) << "ZoneHeap: OpenShelf  " << shelf_num
+                       << "failed for : " << (uint64_t)pool_id_;
+            // Close all the OpenShelfs() and return error.
+            // The current shelf will be closed by OpenShelf code,
+            // Explicitely close other shelfs
+            while (shelf_num > 0) {
+                shelf_num--;
+                ret = CloseShelf(shelf_num);
+                if (ret != NO_ERROR) {
+                    LOG(trace)
+                        << "ZoneHeap: Open Error Handling, CloseShelf  "
+                        << shelf_num << "failed for : " << (uint64_t)pool_id_;
+                    // Do not return error here, we will attempt to close
+                    // everything.
+                }
+            }
 
-           (void)region_->Unmap(gh_,  round_up(sizeof(struct GlobalHeader),kCacheLineSize));
-           if (ret != NO_ERROR) {
-              LOG(trace) << "ZoneHeap: Open Error Handling, gh_ unmap failed for : " << (uint64_t)pool_id_;
-              // Do not return error here, we will attempt to close everything.
-           }    
-           ret = region_->Close();
-           if (ret != NO_ERROR) {
-              LOG(trace) << "ZoneHeap: Open Error Handling, region close failed for : " << (uint64_t)pool_id_;
-              // Do not return error here, we will attempt to close everything.
-           }
-           delete region_;
-           (void)pool_.Close(false);
-           return HEAP_OPEN_FAILED;                      
-        }          
+            (void)region_->Unmap(
+                gh_, round_up(sizeof(struct GlobalHeader), kCacheLineSize));
+            if (ret != NO_ERROR) {
+                LOG(trace)
+                    << "ZoneHeap: Open Error Handling, gh_ unmap failed for : "
+                    << (uint64_t)pool_id_;
+                // Do not return error here, we will attempt to close
+                // everything.
+            }
+            ret = region_->Close();
+            if (ret != NO_ERROR) {
+                LOG(trace) << "ZoneHeap: Open Error Handling, region close "
+                              "failed for : "
+                           << (uint64_t)pool_id_;
+                // Do not return error here, we will attempt to close
+                // everything.
+            }
+            delete region_;
+            (void)pool_.Close(false);
+            return HEAP_OPEN_FAILED;
+        }
         shelf_num++;
     } while (shelf_num < total_data_shelfs);
 
     min_obj_size_ = rmb_[0]->MinAllocSize();
     is_open_ = true;
 
+    // If No Background thread flag specified, return without spawning threads
+    if(flags & NVMM_NO_BG_THREAD){ 
+       no_bgthread_ = true;
+       return NO_ERROR;
+    }
+
     // start the cleaner thread
     int rc = StartWorker();
     if (rc != 0) {
         // Close all the OpenShelfs() and return error.
         do {
-           shelf_num--;
-           ret = CloseShelf(shelf_num);
-           if (ret != NO_ERROR) {
-              return HEAP_OPEN_FAILED;
-           }
-        } while(shelf_num > 0);
+            shelf_num--;
+            ret = CloseShelf(shelf_num);
+            if (ret != NO_ERROR) {
+                return HEAP_OPEN_FAILED;
+            }
+        } while (shelf_num > 0);
         return HEAP_OPEN_FAILED;
     }
 
     // wait for the cleaner to be running
     std::unique_lock<std::mutex> mutex(cleaner_mutex_);
     running_cv_.wait(mutex, [this] { return cleaner_running_ == true; });
+    no_bgthread_ = false;
     return ret;
 }
 
@@ -706,22 +759,24 @@ ErrorCode EpochZoneHeap::Close() {
     CHECK_IS_OPEN();
     ErrorCode ret = NO_ERROR;
 
-    // stop the cleaner thread
-    int rc = StopWorker();
-    if (rc != 0) {
-        return HEAP_CLOSE_FAILED;
+    if (!is_invalid_ && (no_bgthread_ == false)) {
+        // stop the cleaner thread
+        int rc = StopWorker();
+        if (rc != 0) {
+            return HEAP_CLOSE_FAILED;
+        }
     }
-
     // close the rmb
     for (int shelf_num = (int)(total_mapped_shelfs_ - 1); shelf_num >= 0;
          shelf_num--) {
         ret = CloseShelf(shelf_num);
-        if (ret != NO_ERROR) {     
-           return HEAP_CLOSE_FAILED;
+        if (ret != NO_ERROR) {
+            return HEAP_CLOSE_FAILED;
         }
     }
     // Unmap the gh_
-    ret = region_->Unmap(gh_,  round_up(sizeof(struct GlobalHeader),kCacheLineSize));
+    ret = region_->Unmap(gh_,
+                         round_up(sizeof(struct GlobalHeader), kCacheLineSize));
     if (ret != NO_ERROR) {
         return HEAP_CLOSE_FAILED;
     }
@@ -767,21 +822,21 @@ GlobalPtr EpochZoneHeap::Alloc(size_t size) {
     GlobalPtr ptr;
     Offset offset = 0;
     int shelf_num = -1;
-    //int total_shelf = get_total_data_shelfs();
+    // int total_shelf = get_total_data_shelfs();
     int total_shelf = total_mapped_shelfs_;
-    do {        
+    do {
         shelf_num = (shelf_num + 1);
 
-        if(shelf_num == total_mapped_shelfs_) {
+        if (shelf_num == total_mapped_shelfs_) {
             total_shelf = get_total_data_shelfs();
-            if(total_shelf > total_mapped_shelfs_) {               
-               OpenNewShelfs();
-            }
-            else
-               break;
+            if (total_shelf > total_mapped_shelfs_) {
+                OpenNewShelfs();
+            } else
+                break;
         }
         offset = rmb_[shelf_num]->Alloc(size);
-    } while (rmb_[shelf_num]->IsValidOffset(offset) == false && shelf_num < total_mapped_shelfs_);
+    } while (rmb_[shelf_num]->IsValidOffset(offset) == false &&
+             shelf_num < total_mapped_shelfs_);
     if (offset == 0)
         return 0;
     else
@@ -789,8 +844,8 @@ GlobalPtr EpochZoneHeap::Alloc(size_t size) {
                          offset);
 }
 
-
-// The offset returned by AllocOffset has Offset + ((shelf_idx-1) << kOffsetShift)
+// The offset returned by AllocOffset has Offset + ((shelf_idx-1) <<
+// kOffsetShift)
 Offset EpochZoneHeap::AllocOffset(size_t size) {
     GlobalPtr global_ptr = Alloc(size);
 
@@ -800,10 +855,11 @@ Offset EpochZoneHeap::AllocOffset(size_t size) {
     ShelfId shelf_id = global_ptr.GetShelfId();
     ShelfIndex shelf_idx = shelf_id.GetShelfIndex();
     // Left shift shelf_idx by kOffsetShift.
-    // We cant use kOffsetShift directly as it is a private member of global_ptr.
-    // So we create a GlobalPtr with poolId 0 and shelfIndex as shelf_idx
-    // and return uint64_t.
-    return GlobalPtr(ShelfId(0, (ShelfIndex)((int)shelf_idx - 1)),offset).ToUINT64();
+    // We cant use kOffsetShift directly as it is a private member of
+    // global_ptr. So we create a GlobalPtr with poolId 0 and shelfIndex as
+    // shelf_idx and return uint64_t.
+    return GlobalPtr(ShelfId(0, (ShelfIndex)((int)shelf_idx - 1)), offset)
+        .ToUINT64();
 }
 
 void EpochZoneHeap::Free(GlobalPtr global_ptr) {
@@ -813,20 +869,20 @@ void EpochZoneHeap::Free(GlobalPtr global_ptr) {
     ShelfIndex shelf_idx = shelf_id.GetShelfIndex();
 
     // The shelf is not yet open
-    if(shelf_idx > total_mapped_shelfs_) {       
-       ErrorCode ret = OpenNewShelfs();
-       // Free does not return any value, So we will need to throw exception
-       if (ret != NO_ERROR) {         
-          LOG(trace)<<"mapping new shelf failed: "<<ret;
-          return;
-       }
+    if (shelf_idx > total_mapped_shelfs_) {
+        ErrorCode ret = OpenNewShelfs();
+        // Free does not return any value, So we will need to throw exception
+        if (ret != NO_ERROR) {
+            LOG(trace) << "mapping new shelf failed: " << ret;
+            return;
+        }
     }
 
     rmb_[shelf_idx - 1]->Free(offset);
 }
 
 //
-// Offset has the (shelfindex - 1) also in it. 
+// Offset has the (shelfindex - 1) also in it.
 // i.e offset = ((shelfIndex - 1) << 40) + offset
 //
 void EpochZoneHeap::Free(Offset offset) {
@@ -838,13 +894,14 @@ void EpochZoneHeap::Free(Offset offset) {
     // Get only the offset from shelfIndex + offset
     offset = get_offset_from_shelfIndexoffset(offset);
 
-    if(shelf_num >= total_mapped_shelfs_) {       
-       ErrorCode ret = OpenNewShelfs();
-       // TODO: Free does not return any value, So we will need to throw exception
-       if (ret != NO_ERROR) {         
-          LOG(trace)<<"mapping new shelf failed: "<<ret;
-          return;
-       }
+    if (shelf_num >= total_mapped_shelfs_) {
+        ErrorCode ret = OpenNewShelfs();
+        // TODO: Free does not return any value, So we will need to throw
+        // exception
+        if (ret != NO_ERROR) {
+            LOG(trace) << "mapping new shelf failed: " << ret;
+            return;
+        }
     }
     rmb_[shelf_num]->Free(offset);
 }
@@ -862,14 +919,14 @@ void EpochZoneHeap::Free(EpochOp &op, GlobalPtr global_ptr) {
     ShelfId shelf_id = global_ptr.GetShelfId();
     ShelfIndex shelf_idx = shelf_id.GetShelfIndex();
 
-    if(shelf_idx > total_mapped_shelfs_) {
+    if (shelf_idx > total_mapped_shelfs_) {
         ErrorCode ret = OpenNewShelfs();
-        // TODO: Free does not return any value, So we will need to throw exception
+        // TODO: Free does not return any value, So we will need to throw
+        // exception
         if (ret != NO_ERROR) {
-            LOG(trace)<<"mapping new shelf failed: "<<ret;
+            LOG(trace) << "mapping new shelf failed: " << ret;
             return;
         }
-
     }
     if (rmb_[shelf_idx - 1]->IsValidOffset(offset) == false)
         return;
@@ -878,68 +935,72 @@ void EpochZoneHeap::Free(EpochOp &op, GlobalPtr global_ptr) {
         EpochCounter e = op.reported_epoch();
         LOG(trace) << "delay freeing block [" << offset << "] at epoch "
                    << e + 3;
-        global_list_[shelf_idx - 1][(e + 3) % kListCnt]
-            .push(bitmap_start_[shelf_idx - 1], offset / min_obj_size_);
+        global_list_[shelf_idx - 1][(e + 3) % kListCnt].push(
+            bitmap_start_[shelf_idx - 1], offset / min_obj_size_);
     }
 }
 
 ErrorCode EpochZoneHeap::OpenShelf(int shelf_num) {
     std::string path;
-    
-    uint64_t headersize = fam_atomic_u64_read (&gh_->sz[shelf_num].headersize); 
-    uint64_t headeroffset =  fam_atomic_u64_read (&gh_->sz[shelf_num].headeroffset);
-    uint64_t shelfsize = fam_atomic_u64_read (&gh_->sz[shelf_num].shelfsize);
+
+    uint64_t headersize = fam_atomic_u64_read(&gh_->sz[shelf_num].headersize);
+    uint64_t headeroffset =
+        fam_atomic_u64_read(&gh_->sz[shelf_num].headeroffset);
+    uint64_t shelfsize = fam_atomic_u64_read(&gh_->sz[shelf_num].shelfsize);
     // map the header for shelf 'shelf_num'
-    ErrorCode ret = region_->Map(NULL, headersize, PROT_READ | PROT_WRITE, 
-                       MAP_SHARED, headeroffset, 
-                      (void **)&mapped_addr_[shelf_num]);
+    ErrorCode ret =
+        region_->Map(NULL, headersize, PROT_READ | PROT_WRITE, MAP_SHARED,
+                     headeroffset, (void **)&mapped_addr_[shelf_num]);
     if (ret != NO_ERROR) {
-        std::cout << "Zone: region map failed " << ret << std::endl;
         LOG(error) << "Zone: region map failed " << (uint64_t)pool_id_;
         return HEAP_OPEN_FAILED;
     }
     size_t gh_size = 0;
     if (shelf_num == 0)
-       gh_size = round_up(sizeof(struct GlobalHeader),kCacheLineSize);
+        gh_size = round_up(sizeof(struct GlobalHeader), kCacheLineSize);
 
     // get the global freelists
-    global_list_[shelf_num] = (ZoneEntryStack *)((char*)mapped_addr_[shelf_num] + gh_size);    
-    uint64_t reserved = round_up( kListCnt * sizeof(ZoneEntryStack), kCacheLineSize) + gh_size ;
-    
+    global_list_[shelf_num] =
+        (ZoneEntryStack *)((char *)mapped_addr_[shelf_num] + gh_size);
+    uint64_t reserved =
+        round_up(kListCnt * sizeof(ZoneEntryStack), kCacheLineSize) + gh_size;
+
     header_[shelf_num] = (void *)((char *)mapped_addr_[shelf_num] +
-                                          round_up(reserved, kCacheLineSize));
+                                  round_up(reserved, kCacheLineSize));
     // get the zone shelf
     ret = pool_.GetShelfPath((ShelfIndex)(shelf_num + 1), path);
-    if (ret != NO_ERROR) {            
+    if (ret != NO_ERROR) {
         // unmap the region
         ret = region_->Unmap(mapped_addr_[shelf_num], headersize);
         return HEAP_OPEN_FAILED;
-     }
+    }
 
     // open rmb
     rmb_[shelf_num] =
-            new ShelfHeap(path, ShelfId(pool_id_, (ShelfIndex)(shelf_num + 1)));
+        new ShelfHeap(path, ShelfId(pool_id_, (ShelfIndex)(shelf_num + 1)));
     assert(rmb_[shelf_num] != NULL);
     ret = rmb_[shelf_num]->Open(header_[shelf_num], headersize - reserved);
     if (ret != NO_ERROR) {
-         // unmap the region
-         ret = region_->Unmap(mapped_addr_[shelf_num], headersize);
-         LOG(error) << "Zone: rmb open failed " << (uint64_t)pool_id_;
-         return HEAP_OPEN_FAILED;
+        // unmap the region
+        ret = region_->Unmap(mapped_addr_[shelf_num], headersize);
+        LOG(error) << "Zone: rmb open failed " << (uint64_t)pool_id_;
+        return HEAP_OPEN_FAILED;
     }
-    bitmap_start_[shelf_num] = (void*)((char*)header_[shelf_num] + rmb_[shelf_num]->get_bitmap_offset());
+    bitmap_start_[shelf_num] = (void *)((char *)header_[shelf_num] +
+                                        rmb_[shelf_num]->get_bitmap_offset());
 
     // Validation to check if shelf size and shelf size in gh_ is same
-    if (rmb_[shelf_num]->Size() != shelfsize) {    
-        LOG(error) << "Zone: Shelf size in header and actual shelf different, shelf id: " 
-                   << shelf_num+1;
+    if (rmb_[shelf_num]->Size() != shelfsize) {
+        LOG(error) << "Zone: Shelf size in header and actual shelf different, "
+                      "shelf id: "
+                   << shelf_num + 1;
         (void)region_->Unmap(mapped_addr_[shelf_num], headersize);
-        (void)rmb_[shelf_num]->Close();   
-        return HEAP_OPEN_FAILED;        
-    } 
+        (void)rmb_[shelf_num]->Close();
+        return HEAP_OPEN_FAILED;
+    }
     rmb_size_[shelf_num] = rmb_[shelf_num]->Size();
     total_mapped_shelfs_ = shelf_num + 1;
-    return NO_ERROR;    
+    return NO_ERROR;
 }
 
 // The caller of this function has to ensure shelf_num is a valid shelf
@@ -966,21 +1027,23 @@ ErrorCode EpochZoneHeap::CloseShelf(int shelf_num) {
     return NO_ERROR;
 }
 
-// This function is invoked by processes which want to open the shelf resized from other processes.
+// This function is invoked by processes which want to open the shelf resized
+// from other processes.
 ErrorCode EpochZoneHeap::OpenNewShelfs() {
     int new_total_shelfs = get_total_data_shelfs();
     ErrorCode ret;
 
-    // Verify if we have already mapped all the shelfs    
-    if(new_total_shelfs == total_mapped_shelfs_)
-       return NO_ERROR;
+    // Verify if we have already mapped all the shelfs
+    if (new_total_shelfs == total_mapped_shelfs_)
+        return NO_ERROR;
 
     for (int shelf_num = total_mapped_shelfs_; shelf_num < new_total_shelfs;
          shelf_num++) {
-         
+
         ret = OpenShelf(shelf_num);
         if (ret != NO_ERROR) {
-            LOG(error) << "ZoneHeap: OpenShelf  " << shelf_num << "failed for : " << (uint64_t)pool_id_;
+            LOG(error) << "ZoneHeap: OpenShelf  " << shelf_num
+                       << "failed for : " << (uint64_t)pool_id_;
             return HEAP_OPEN_FAILED;
         }
     }
@@ -1035,26 +1098,25 @@ int EpochZoneHeap::get_shelfnum_from_shelfIndexoffset(Offset offset) {
 }
 
 int EpochZoneHeap::get_total_data_shelfs() {
-    // gh_ will be NULL during destroy heap, in that case read the 
+    // gh_ will be NULL during destroy heap, in that case read the
     // total shelfs from pool.
     if (gh_ != NULL) {
-        // Do we need to use atomic operation here ? 
+        // Do we need to use atomic operation here ?
         // May not since only resize can change the value
-        return (int)fam_atomic_u64_read (&gh_->total_shelfs);
-    }
-    else {
-        // During destroy the heap is not open. 
+        return (int)fam_atomic_u64_read(&gh_->total_shelfs);
+    } else {
+        // During destroy the heap is not open.
         // We need to get total shelf from pool
         ShelfIndex shelf_idx = pool_.Size();
         ErrorCode ret;
         // Find the next free shelf, if it returns
         // free shelf not found, return kMaxShelfCount.
-        ret = pool_.FindNextFreeShelf(shelf_idx);    
+        ret = pool_.FindNextFreeShelf(shelf_idx);
         if (ret != NO_ERROR) {
             if (ret == POOL_SHELF_NOT_FOUND)
-                shelf_idx = Pool::kMaxShelfCount;       
-            else 
-               return -1; // This is not expected, return -1. 
+                shelf_idx = Pool::kMaxShelfCount;
+            else
+                return -1; // This is not expected, return -1.
         }
         return (int)shelf_idx - 1;
     }
@@ -1068,14 +1130,16 @@ size_t EpochZoneHeap::get_header_shelf_size(int shelf_num) {
 // header size of a shelf should be read from shelf_heap.
 // In addition to it we have epoch free list and global header.
 //
-size_t EpochZoneHeap::get_header_size_from_size(size_t size, size_t min_alloc_size, ShelfIndex shelf_idx) {
+size_t EpochZoneHeap::get_header_size_from_size(size_t size,
+                                                size_t min_alloc_size,
+                                                ShelfIndex shelf_idx) {
     size_t gh_size = 0;
     size_t total_size = 0;
     if (shelf_idx == 0)
-       gh_size = round_up(sizeof(struct GlobalHeader),kCacheLineSize);
-    total_size = ShelfHeap::get_header_size(size, min_alloc_size) + 
-           round_up(kListCnt * sizeof(ZoneEntryStack) , kCacheLineSize) +
-           gh_size;
+        gh_size = round_up(sizeof(struct GlobalHeader), kCacheLineSize);
+    total_size = ShelfHeap::get_header_size(size, min_alloc_size) +
+                 round_up(kListCnt * sizeof(ZoneEntryStack), kCacheLineSize) +
+                 gh_size;
     total_size = round_up(total_size, header_size_round_up());
     return total_size;
 }
@@ -1084,7 +1148,8 @@ size_t EpochZoneHeap::get_total_header_size() {
     int total_shelfs = get_total_data_shelfs();
     size_t total_header_size = 0;
     for (int shelf_num = 0; shelf_num < total_shelfs; shelf_num++) {
-        total_header_size += fam_atomic_u64_read(&gh_->sz[shelf_num].headersize);
+        total_header_size +=
+            fam_atomic_u64_read(&gh_->sz[shelf_num].headersize);
     }
     return total_header_size;
 }
@@ -1172,23 +1237,42 @@ void EpochZoneHeap::BackgroundWorker() {
             }
         }
         // do work
-        for (int shelf_num = 0; shelf_num < total_mapped_shelfs_;
-             shelf_num++) {
+        for (int shelf_num = 0; shelf_num < total_mapped_shelfs_; shelf_num++) {
+
             EpochManager *em = EpochManager::GetInstance();
             EpochOp op(em);
             EpochCounter e = op.reported_epoch();
-
+            if (fam_atomic_u64_read(&gh_->destroy_in_progress)) {
+                is_invalid_ = true;
+                for (int shelf_num = 0; shelf_num < total_mapped_shelfs_;
+                     shelf_num++) {
+                    rmb_[shelf_num]->MarkInvalid();
+                }
+                Close();
+                LOG(trace) << "cleaner: exiting...";
+                return;
+            }
             LOG(trace) << "cleaner: now looking at epoch " << e;
             uint64_t i = 0;
             for (; i < kFreeCnt; i++) {
-                Offset offset = global_list_[shelf_num][e % kListCnt]
-                                    .pop(bitmap_start_[shelf_num]) *
+                Offset offset = global_list_[shelf_num][e % kListCnt].pop(
+                                    bitmap_start_[shelf_num]) *
                                 min_obj_size_;
                 if (offset == 0)
-                    break;                 
+                    break;
                 // TODO: a crash here will leak memory
                 LOG(trace) << " freeing block [" << offset << "]";
                 rmb_[shelf_num]->Free(offset);
+            }
+            if (fam_atomic_u64_read(&gh_->destroy_in_progress)) {
+                is_invalid_ = true;
+                for (int shelf_num = 0; shelf_num < total_mapped_shelfs_;
+                     shelf_num++) {
+                    rmb_[shelf_num]->MarkInvalid();
+                }
+                Close();
+                LOG(trace) << "cleaner: exiting...";
+                return;
             }
             LOG(trace) << " in total " << i << " blocks have been freed";
         }
@@ -1200,9 +1284,9 @@ size_t EpochZoneHeap::MinAllocSize() { return rmb_[0]->MinAllocSize(); }
 
 void EpochZoneHeap::Merge() {
     ASSERT_IS_OPEN();
-    OpenNewShelfs();        
+    OpenNewShelfs();
     // TODO: Handle errors from merge
-    for (int shelf_num = 0;  shelf_num < total_mapped_shelfs_; shelf_num++) 
+    for (int shelf_num = 0; shelf_num < total_mapped_shelfs_; shelf_num++)
         rmb_[shelf_num]->Merge();
 }
 
@@ -1211,7 +1295,7 @@ void EpochZoneHeap::OfflineRecover() {
     OpenNewShelfs();
     fam_atomic_u64_write(&gh_->op_in_progress, 0);
     // TODO: Handle errors from OfflineRecover
-    for (int shelf_num = 0;  shelf_num < total_mapped_shelfs_; shelf_num++)
+    for (int shelf_num = 0; shelf_num < total_mapped_shelfs_; shelf_num++)
         rmb_[shelf_num]->OfflineRecover();
 }
 
@@ -1219,7 +1303,7 @@ void EpochZoneHeap::OnlineRecover() {
     ASSERT_IS_OPEN();
     OpenNewShelfs();
     // TODO: Handle errors from OnlineRecover
-    for (int shelf_num = 0;  shelf_num < (int)total_mapped_shelfs_; shelf_num++)
+    for (int shelf_num = 0; shelf_num < (int)total_mapped_shelfs_; shelf_num++)
         rmb_[shelf_num]->OnlineRecover();
 }
 
@@ -1227,14 +1311,34 @@ void EpochZoneHeap::Stats() {
     ASSERT_IS_OPEN();
     OpenNewShelfs();
     // TODO: Handle errors from Stats
-    for (int shelf_num = 0;  shelf_num < (int)total_mapped_shelfs_; shelf_num++)
+    for (int shelf_num = 0; shelf_num < (int)total_mapped_shelfs_; shelf_num++)
         rmb_[shelf_num]->Stats();
 }
 
+/* 
+ * Offlinefree will free delayed free items from all the epoch queues.
+ * It parses queues from all the shelfs.
+ *
+ * Note : This doesnt take epochOp lock, operate with care. 
+ * It has to be called only when user is certain that all the items can be 
+ * freed.
+ */
 void EpochZoneHeap::OfflineFree() {
     ASSERT_IS_OPEN();
-    // temperary increase freecnt
-    kFreeCnt = 1000000;
+    OpenNewShelfs();    
+    for (int shelf_num = 0; shelf_num < (int)total_mapped_shelfs_; shelf_num++) {
+         for(int e = 0; e < kListCnt; e++) {
+             while (1) {
+                   Offset offset = global_list_[shelf_num][e].pop(
+                      bitmap_start_[shelf_num]) * min_obj_size_;
+                   if (offset == 0)
+                      break;
+                   // TODO: a crash here will leak memory
+                   LOG(trace) << " freeing block [" << offset << "]";
+                   rmb_[shelf_num]->Free(offset);
+            }
+         }
+    }
 }
 
 } // namespace nvmm

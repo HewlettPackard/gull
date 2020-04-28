@@ -22,57 +22,66 @@
  *
  */
 
-#include <mutex>
 #include <map>
-#include <unordered_map>
+#include <mutex>
 #include <stddef.h>
+#include <unordered_map>
 
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#include "nvmm/nvmm_fam_atomic.h"
 #include "nvmm/shelf_id.h"
 
 #include "nvmm/log.h"
-#include "shelf_mgmt/shelf_manager.h"
 #include "shelf_mgmt/shelf_file.h"
+#include "shelf_mgmt/shelf_manager.h"
 
 namespace nvmm {
 
-std::unordered_map<ShelfId, std::pair<void *, size_t>, ShelfId::Hash, ShelfId::Equal> ShelfManager::map_;
-std::map<void *, std::pair<ShelfId, size_t>> ShelfManager::reverse_map_;
+/**
+ * This unordered_map maps shelfId to a tuple which has the following fields
+ * 1] mapped address
+ * 2] size of the memory region mapped
+ * 3] whether the mapped region is valid
+ **/
+std::unordered_map<ShelfId, std::tuple<void *, size_t, bool>, ShelfId::Hash,
+                   ShelfId::Equal>
+    ShelfManager::map_;
+std::map<void *, std::tuple<ShelfId, size_t, bool>> ShelfManager::reverse_map_;
 std::mutex ShelfManager::map_mutex_;
-    
-void *ShelfManager::RegisterShelf(ShelfId shelf_id, void *base, size_t length)
-{
-    auto entry = std::make_pair(shelf_id, std::make_pair(base, length));
+
+void *ShelfManager::RegisterShelf(ShelfId shelf_id, void *base, size_t length) {
+    // check if the heap is already mapped, if so check is it valid
+    auto ret = map_.find(shelf_id);
+
+    if (ret != map_.end() && !(std::get<2>(ret->second))) {
+        UnregisterShelf(shelf_id);
+    }
+
+    auto entry = std::make_pair(shelf_id, std::make_tuple(base, length, true));
     auto result = map_.insert(entry);
-    if (result.second == true)
-    {
+    if (result.second == true) {
         LOG(trace) << "RegisterShelf: mapping registered";
-        auto reverse_entry = std::make_pair(base, std::make_pair(shelf_id,length));
+        auto reverse_entry =
+            std::make_pair(base, std::make_tuple(shelf_id, length, true));
         auto reverse_result = reverse_map_.insert(reverse_entry);
         assert(reverse_result.second == true);
         return base;
-    }
-    else
-    {
+    } else {
         LOG(trace) << "RegisterShelf: existing mapping";
-        assert(result.first->second.second == length);
-        return result.first->second.first;
+        assert(std::get<1>(result.first->second) == length);
+        return std::get<0>(result.first->second);
     }
 }
 
-void *ShelfManager::UnregisterShelf(ShelfId shelf_id)
-{
+void *ShelfManager::UnregisterShelf(ShelfId shelf_id) {
     auto result = map_.find(shelf_id);
-    if (result == map_.end())
-    {
+    if (result == map_.end()) {
         LOG(trace) << "UnregisterShelf: mapping not found";
         return NULL;
-    }
-    else
-    {
-        void *ret = result->second.first;
+    } else {
+        void *ret = std::get<0>(result->second);
         (void)map_.erase(result);
         LOG(trace) << "UnregisterShelf: mapping unregistered";
         auto reverse_result = reverse_map_.find(ret);
@@ -82,109 +91,128 @@ void *ShelfManager::UnregisterShelf(ShelfId shelf_id)
     }
 }
 
-
-void *ShelfManager::LookupShelf(ShelfId shelf_id)
-{
+void *ShelfManager::LookupShelf(ShelfId shelf_id) {
     auto result = map_.find(shelf_id);
-    if (result == map_.end())
-    {
+    if (result == map_.end()) {
         LOG(trace) << "LookupShelf: mapping not found";
         return NULL;
-    }
-    else
-    {
+    } else {
         LOG(trace) << "LookupShelf: mapping found";
-        return result->second.first;
+        // return NULL if the shelf is invalid
+        if (!std::get<2>(result->second)) {
+            return NULL;
+        }
+        return std::get<0>(result->second);
     }
 }
-    
-void *ShelfManager::FindBase(ShelfId shelf_id)
-{
-    //ShelfManager::Lock();
+
+void *ShelfManager::FindBase(ShelfId shelf_id) {
+    // ShelfManager::Lock();
     void *ret = LookupShelf(shelf_id);
-    //ShelfManager::Unlock();
+    // ShelfManager::Unlock();
     return ret;
 }
 
-void *ShelfManager::FindBase(std::string path, ShelfId shelf_id)
-{
+void *ShelfManager::FindBase(std::string path, ShelfId shelf_id) {
     void *addr;
     ShelfManager::Lock();
     auto result = map_.find(shelf_id);
-    if (result != map_.end())
-    {
+    if (result != map_.end()) {
         LOG(trace) << "FindBase: mapping found";
         ShelfManager::Unlock();
-        return result->second.first;
+        // Checking if the map is valid, if not return NULL
+        if (std::get<2>(result->second))
+            return std::get<0>(result->second);
+        else
+            return NULL;
     }
 
-    LOG(trace) << "FindBase: mapping not found";    
-    ShelfFile shelf(path);    
+    LOG(trace) << "FindBase: mapping not found";
+    ShelfFile shelf(path);
     size_t length = shelf.Size();
-    int prot = PROT_READ|PROT_WRITE;
+    int prot = PROT_READ | PROT_WRITE;
     int flags = MAP_SHARED;
     loff_t offset = 0;
 
     ErrorCode ret = shelf.Open(O_RDWR);
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         ShelfManager::Unlock();
         return NULL;
     }
     ret = shelf.Map(NULL, length, prot, flags, offset, &addr);
-    if (ret == NO_ERROR)
-    {
+    if (ret == NO_ERROR) {
         void *actual_addr = ShelfManager::RegisterShelf(shelf_id, addr, length);
         assert(actual_addr == addr);
         ShelfManager::Unlock();
         (void)shelf.Close();
         return addr;
-    }
-    else
-    {
+    } else {
         ShelfManager::Unlock();
         (void)shelf.Close();
         return NULL;
-    }    
+    }
 }
-    
-ShelfId ShelfManager::FindShelf(void *ptr, void *&base)
-{
+
+ShelfId ShelfManager::FindShelf(void *ptr, void *&base) {
     // TODO: optimization
-    for(auto it : reverse_map_)
-    {
+    for (auto it : reverse_map_) {
         base = it.first;
-        size_t length = it.second.second;
-        if ((uintptr_t)ptr >= (uintptr_t)base && (uintptr_t)ptr < ((uintptr_t)base+length))
-        {
+        size_t length = std::get<1>(it.second);
+        if ((uintptr_t)ptr >= (uintptr_t)base &&
+            (uintptr_t)ptr < ((uintptr_t)base + length)) {
+            // return invalid shelf id if map is invalid
+            if (!std::get<2>(it.second))
+                return ShelfId();
             LOG(trace) << "FindShelf: mapping found";
-            return it.second.first;
+            return std::get<0>(it.second);
         }
     }
     LOG(trace) << "FindShelf: mapping not found";
     return ShelfId(); // an invalid shelf id
 }
 
-void ShelfManager::Reset()
-{
-    for(auto it=map_.begin(); it!=map_.end(); it++)
-    {
-        void *base = it->second.first;
-        size_t length = it->second.second;
+ErrorCode ShelfManager::MarkInvalid(ShelfId shelf_id) {
+    auto ret = map_.find(shelf_id);
+
+    // Mark the shelf invalid if not marked already
+    if (ret != map_.end() && std::get<2>(ret->second)) {
+        ret->second = std::make_tuple(std::get<0>(ret->second),
+                                      std::get<1>(ret->second), false);
+        auto reverse_result = reverse_map_.find(std::get<0>(ret->second));
+
+        if (reverse_result != reverse_map_.end() &&
+            std::get<2>(reverse_result->second)) {
+            reverse_result->second =
+                std::make_tuple(std::get<0>(reverse_result->second),
+                                std::get<1>(reverse_result->second), false);
+        }
+        return NO_ERROR;
+    }
+
+    return SHELF_ID_NOT_FOUND;
+}
+
+bool ShelfManager::IsInvalid(ShelfId shelf_id) {
+    auto ret = map_.find(shelf_id);
+
+    if (ret != map_.end())
+        return !(std::get<2>(ret->second));
+    else
+        return false;
+}
+
+void ShelfManager::Reset() {
+    for (auto it = map_.begin(); it != map_.end(); it++) {
+        void *base = std::get<0>(it->second);
+        size_t length = std::get<1>(it->second);
         ShelfFile::Unmap(base, length, true);
     }
     map_.clear();
     reverse_map_.clear();
 }
-    
-void ShelfManager::Lock()
-{
-    map_mutex_.lock();
-}
 
-void ShelfManager::Unlock()
-{
-    map_mutex_.unlock();
-}
+void ShelfManager::Lock() { map_mutex_.lock(); }
+
+void ShelfManager::Unlock() { map_mutex_.unlock(); }
 
 } // namespace nvmm

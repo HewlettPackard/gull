@@ -1,7 +1,4 @@
 # Non-Volatile Memory Manager (NVMM)
-
-Contact: Yupu Zhang (yupu.zhang@hpe.com)
-
 ## Description
 
 Non-Volatile Memory Manager (NVMM) is a library written in C++ that provides simple abstractions
