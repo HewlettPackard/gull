@@ -38,6 +38,8 @@ namespace nvmm{
 
 #define METADATA_REGION_ID 1
 #define METADATA_REGION_NAME 2
+#define ATL_REGION_ID 3
+#define ATL_REGION_NAME 4
 
 // Global bootstrapping functions for NVMM
 
@@ -178,6 +180,15 @@ public:
     // Set the global pointer for metadata region id or region name
     // based on type as METADATA_REGION_ID or METADATA_REGION_NAME
     GlobalPtr SetMetadataRegionRootPtr(int type, GlobalPtr);
+
+    // Return the global pointer for ATL region id or region name
+    // based on type as ATL_REGION_ID or ATL_REGION_NAME
+    GlobalPtr GetATLRegionRootPtr(int type);
+
+    // Set the global pointer for ATL region id or region name
+    // based on type as ATL_REGION_ID or ATL_REGION_NAME
+    GlobalPtr SetATLRegionRootPtr(int type, GlobalPtr);
+
 
 
 private:

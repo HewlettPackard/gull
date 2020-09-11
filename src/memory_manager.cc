@@ -188,6 +188,9 @@ public:
     void *GetRegionIdBitmapAddr();
     GlobalPtr GetMetadataRegionRootPtr(int type);
     GlobalPtr SetMetadataRegionRootPtr(int type, GlobalPtr);
+    GlobalPtr GetATLRegionRootPtr(int type);
+    GlobalPtr SetATLRegionRootPtr(int type, GlobalPtr);
+
 
 private:
     enum PoolType {
@@ -234,6 +237,8 @@ private:
     void *bmap_addr_; // store bitmap start address for region id management
     uint64_t *metadata_regionid_root_; // Store metadata region id's globalptr
     uint64_t *metadata_regionname_root_;// Store metadata region name's globalptr
+    uint64_t *atl_regionid_root_; // Store ATL region id's globalptr
+    uint64_t *atl_regionname_root_;// Store ATL region name's globalptr
 };
 
 ErrorCode MemoryManager::Impl_::Init()
@@ -269,6 +274,9 @@ ErrorCode MemoryManager::Impl_::Init()
     next_addr = (uint64_t *)addr;
     metadata_regionid_root_ = next_addr+1;
     metadata_regionname_root_ = metadata_regionid_root_ + 1;
+    //Region Id and name rootptr for ATL
+    atl_regionid_root_ = metadata_regionname_root_ + 1;
+    atl_regionname_root_ = atl_regionid_root_ + 1;
 
     is_ready_ = true;
     return NO_ERROR;
@@ -731,6 +739,37 @@ GlobalPtr MemoryManager::Impl_::SetMetadataRegionRootPtr(int type, GlobalPtr reg
     return GlobalPtr(); // return an invalid global pointer;
 }
 
+GlobalPtr MemoryManager::Impl_::GetATLRegionRootPtr(int type){
+    if (type == ATL_REGION_ID) {
+        return GlobalPtr(fam_atomic_u64_read(atl_regionid_root_));
+    } else if (type == ATL_REGION_NAME) {
+        return GlobalPtr(fam_atomic_u64_read(atl_regionname_root_));
+    }
+    return GlobalPtr(); // return an invalid global pointer
+}
+
+GlobalPtr MemoryManager::Impl_::SetATLRegionRootPtr(int type, GlobalPtr regionPtr){
+    if (type == ATL_REGION_ID) {
+        uint64_t regptr = regionPtr.ToUINT64();
+        // update atl_regionid_root_ only if it doesn't have any value
+        uint64_t resultptr = fam_atomic_u64_compare_and_store(atl_regionid_root_, 0, regptr);
+        if (resultptr == 0) {
+             return regionPtr;
+        } else {
+             return GlobalPtr(resultptr);
+        }
+    } else if (type == ATL_REGION_NAME) {
+        uint64_t regptr = regionPtr.ToUINT64();
+        // update atl_regionname_root_ only if it doesn't have any value
+        uint64_t resultptr = fam_atomic_u64_compare_and_store(atl_regionname_root_, 0, regptr);
+        if (resultptr == 0) {
+             return regionPtr;
+        } else {
+             return GlobalPtr(resultptr);
+        }
+    }
+    return GlobalPtr(); // return an invalid global pointer;
+}
 
 /*
  * Public APIs of MemoryManager
