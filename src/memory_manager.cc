@@ -883,4 +883,12 @@ GlobalPtr MemoryManager::SetMetadataRegionRootPtr(int type, GlobalPtr regionRoot
     return pimpl_->SetMetadataRegionRootPtr(type, regionRoot);
 }
 
+GlobalPtr MemoryManager::GetATLRegionRootPtr(int type){
+    return pimpl_->GetATLRegionRootPtr(type);
+}
+
+GlobalPtr MemoryManager::SetATLRegionRootPtr(int type, GlobalPtr regionRoot){
+    return pimpl_->SetATLRegionRootPtr(type, regionRoot);
+}
+
 } // namespace nvmm
