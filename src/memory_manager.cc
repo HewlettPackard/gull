@@ -273,7 +273,7 @@ ErrorCode MemoryManager::Impl_::Init()
     next_addr = (uint64_t *)addr;
     metadata_regionid_root_ = next_addr+1;
     metadata_regionname_root_ = metadata_regionid_root_ + 1;
-    //Region Id and name rootptr for ATL
+    //Region Id rootptr for ATL
     atl_regiondata_root_ = metadata_regionname_root_ + 1;
 
     is_ready_ = true;
