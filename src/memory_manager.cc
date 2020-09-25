@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -188,6 +188,9 @@ public:
     void *GetRegionIdBitmapAddr();
     GlobalPtr GetMetadataRegionRootPtr(int type);
     GlobalPtr SetMetadataRegionRootPtr(int type, GlobalPtr);
+    GlobalPtr GetATLRegionRootPtr(int type);
+    GlobalPtr SetATLRegionRootPtr(int type, GlobalPtr);
+
 
 private:
     enum PoolType {
@@ -234,6 +237,7 @@ private:
     void *bmap_addr_; // store bitmap start address for region id management
     uint64_t *metadata_regionid_root_; // Store metadata region id's globalptr
     uint64_t *metadata_regionname_root_;// Store metadata region name's globalptr
+    uint64_t *atl_regiondata_root_; // Store ATL region id's globalptr
 };
 
 ErrorCode MemoryManager::Impl_::Init()
@@ -269,6 +273,8 @@ ErrorCode MemoryManager::Impl_::Init()
     next_addr = (uint64_t *)addr;
     metadata_regionid_root_ = next_addr+1;
     metadata_regionname_root_ = metadata_regionid_root_ + 1;
+    //Region Id rootptr for ATL
+    atl_regiondata_root_ = metadata_regionname_root_ + 1;
 
     is_ready_ = true;
     return NO_ERROR;
@@ -731,6 +737,27 @@ GlobalPtr MemoryManager::Impl_::SetMetadataRegionRootPtr(int type, GlobalPtr reg
     return GlobalPtr(); // return an invalid global pointer;
 }
 
+//Root Atomic Tranfer Library region
+GlobalPtr MemoryManager::Impl_::GetATLRegionRootPtr(int type){
+    if (type == ATL_REGION_DATA) {
+        return GlobalPtr(fam_atomic_u64_read(atl_regiondata_root_));
+    }
+    return GlobalPtr(); // return an invalid global pointer
+}
+
+GlobalPtr MemoryManager::Impl_::SetATLRegionRootPtr(int type, GlobalPtr regionPtr){
+    if (type == ATL_REGION_DATA) {
+        uint64_t regptr = regionPtr.ToUINT64();
+        // update atl_regiondata_root_ only if it doesn't have any value
+        uint64_t resultptr = fam_atomic_u64_compare_and_store(atl_regiondata_root_, 0, regptr);
+        if (resultptr == 0) {
+             return regionPtr;
+        } else {
+             return GlobalPtr(resultptr);
+        }
+    }
+    return GlobalPtr(); // return an invalid global pointer;
+}
 
 /*
  * Public APIs of MemoryManager
@@ -842,6 +869,14 @@ GlobalPtr MemoryManager::GetMetadataRegionRootPtr(int type){
 
 GlobalPtr MemoryManager::SetMetadataRegionRootPtr(int type, GlobalPtr regionRoot){
     return pimpl_->SetMetadataRegionRootPtr(type, regionRoot);
+}
+
+GlobalPtr MemoryManager::GetATLRegionRootPtr(int type){
+    return pimpl_->GetATLRegionRootPtr(type);
+}
+
+GlobalPtr MemoryManager::SetATLRegionRootPtr(int type, GlobalPtr regionRoot){
+    return pimpl_->SetATLRegionRootPtr(type, regionRoot);
 }
 
 } // namespace nvmm
