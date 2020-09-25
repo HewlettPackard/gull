@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -38,6 +38,7 @@ namespace nvmm{
 
 #define METADATA_REGION_ID 1
 #define METADATA_REGION_NAME 2
+#define ATL_REGION_DATA 3
 
 // Global bootstrapping functions for NVMM
 
@@ -178,6 +179,13 @@ public:
     // Set the global pointer for metadata region id or region name
     // based on type as METADATA_REGION_ID or METADATA_REGION_NAME
     GlobalPtr SetMetadataRegionRootPtr(int type, GlobalPtr);
+
+    // Return the global pointer for ATL region data
+    GlobalPtr GetATLRegionRootPtr(int type);
+
+    // Set the global pointer for ATL region data
+    GlobalPtr SetATLRegionRootPtr(int type, GlobalPtr);
+
 
 
 private:
