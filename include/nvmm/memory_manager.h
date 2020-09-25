@@ -38,8 +38,7 @@ namespace nvmm{
 
 #define METADATA_REGION_ID 1
 #define METADATA_REGION_NAME 2
-#define ATL_REGION_ID 3
-#define ATL_REGION_NAME 4
+#define ATL_REGION_DATA 3
 
 // Global bootstrapping functions for NVMM
 
