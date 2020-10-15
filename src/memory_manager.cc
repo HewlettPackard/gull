@@ -99,10 +99,12 @@ void StartNVMM(std::string base, std::string user) {
     if(root_shelf.Exist() == false)
     {
         ErrorCode ret = root_shelf.Create();
-        if (ret!=NO_ERROR && ret != SHELF_FILE_FOUND)
+        if (ret != NO_ERROR && ret != SHELF_FILE_FOUND )
         {
-            LOG(fatal) << "NVMM: Failed to create the root shelf file " << config.RootShelfPath;
-            exit(1);
+            if (ret != SHELF_FILE_CREATE_FAILED  || (root_shelf.Exist() == false) ) {
+                LOG(fatal) << "NVMM: Failed to create the root shelf file " << config.RootShelfPath;
+                exit(1);
+            }
         }
     }
 
@@ -254,12 +256,23 @@ ErrorCode MemoryManager::Impl_::Init()
         LOG(fatal) << "NVMM: Root shelf does not exist?" << config.RootShelfPath;
         exit(1);
     }
-
-    if (root_shelf_.Open() != NO_ERROR)
+    /* Wait till we confirm if root shelf is created */
+    int retryCnt = 10;
+    do
     {
-        LOG(fatal) << "NVMM: Root shelf open failed..." << config.RootShelfPath;
-        exit(1);
-    }
+        if (root_shelf_.Open() != NO_ERROR)
+        {
+            if (retryCnt == 1) 
+            {
+                LOG(fatal) << "NVMM: Root shelf open failed..." << config.RootShelfPath;
+                exit(1);
+            }
+        }
+        else
+            break;
+        sleep(1);
+        retryCnt--;
+    } while(retryCnt > 0);
 
     locks_ = (nvmm_fam_spinlock*)root_shelf_.Addr();
     types_ = (PoolTypeEntry*)((char*)root_shelf_.Addr() + ShelfId::kMaxPoolCount*sizeof(nvmm_fam_spinlock));
