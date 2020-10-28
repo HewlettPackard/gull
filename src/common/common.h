@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -39,6 +39,15 @@ static int const kVirtualPageSize = 64*1024;
  * Permission mask
  */
 #define PERM_MASK (S_IRWXU|S_IRWXG|S_IRWXO) /* 0777 */
+
+/*
+ * Maximum supported heap size
+ */
+#define KB 1024UL
+#define MB (KB * KB)
+#define GB (MB * KB)
+
+#define MAX_ZONE_SIZE (1024 * GB)
 
 /*
  * Round non-negative x up to the nearest multiple of positive

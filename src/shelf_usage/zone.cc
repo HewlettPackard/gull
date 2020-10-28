@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -89,11 +89,6 @@ inline uint64_t next_power_of_two(uint64_t n)
 
 #define BYTE 8UL
 #define ATOMIC_SIZE 64UL
-#define KB 1024UL
-#define MB (KB * KB)
-#define GB (MB * KB)
-//#define TB (GB * KB)
-#define MAX_ZONE_SIZE (1024 * GB)
 #define MIN_OBJ_SIZE 64
 #define MAX_LEVEL_PER_ZONE power_of_two(MAX_ZONE_SIZE / MIN_OBJ_SIZE)
 //TODO: Add zoneheader size ????
