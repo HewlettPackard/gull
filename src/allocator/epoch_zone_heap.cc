@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -44,6 +44,8 @@
 #include "nvmm/epoch_manager.h"
 
 #include "allocator/epoch_zone_heap.h"
+
+#include "common/common.h"
 
 namespace nvmm {
 
@@ -145,6 +147,11 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
 
         // Round off the shelf size to next power of 2
         shelf_size = next_power_of_two(shelf_size);
+
+        // If shelf_size is greater than MAX_ZONE_SIZE return error
+        if (shelf_size > MAX_ZONE_SIZE) {
+          return HEAP_CREATE_FAILED;
+        }
 
         // create an empty pool
         ret = pool_.Create(shelf_size, mode);
@@ -280,6 +287,11 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
 //
 ErrorCode EpochZoneHeap::Resize(size_t size) {
     TRACE();
+
+    if (size > MAX_ZONE_SIZE) {
+      return HEAP_RESIZE_FAILED;
+    }
+
     // TODO: Currently resize can be performed only on open heap
     if (IsOpen() != true) {
         LOG(error) << "Heap is not open";
