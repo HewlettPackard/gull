@@ -402,6 +402,12 @@ ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size, size_t min_al
     assert(is_ready_ == true);
     assert(id > 0);
     ErrorCode ret = NO_ERROR;
+
+    // Check if poolId > kMaxPoolCount    
+    if (id >= Pool::kMaxPoolCount) {
+        return ID_NOT_VALID;
+    }
+
     Lock(id);
     if (GetType(id)!=PoolType::NONE)
     {

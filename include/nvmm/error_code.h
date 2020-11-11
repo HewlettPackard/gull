@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -123,6 +123,7 @@ enum ErrorCode {
     // memory manager (200-)
     ID_FOUND = 200, // this id is in use
     ID_NOT_FOUND,   // this id is available
+    ID_NOT_VALID,   // This id is not valid
     INVALID_PTR,
     MAP_POINTER_FAILED,
 
