@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -58,6 +58,8 @@ class ShelfManager {
     // check if a shelf is registered or not and return its base if it is
     // registered
     static void *LookupShelf(ShelfId shelf_id);
+    static void *FindAndOpenShelf(ShelfId shelf_id);
+    static void *FindAndCloseShelf(ShelfId shelf_id);
     /*
       called by MemoryManager
     */
@@ -84,9 +86,8 @@ class ShelfManager {
         map_mutex_; // guard concurrent access to map_ and rmap_ (more
                     // specifically, mapping/unmapping/finding shelves)
     // shelf ID => base ptr and length
-    static std::unordered_map<ShelfId, std::tuple<void *, size_t, bool>,
-                              ShelfId::Hash, ShelfId::Equal>
-        map_;
+    static std::unordered_map<ShelfId, std::tuple<void *, size_t, bool, int>,
+                              ShelfId::Hash, ShelfId::Equal> map_;
     // base ptr => shelf ID and length
     static std::map<void *, std::tuple<ShelfId, size_t, bool>> reverse_map_;
 };
