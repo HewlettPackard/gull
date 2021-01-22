@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -46,7 +46,7 @@ class ShelfHeap {
     ~ShelfHeap();
 
     ErrorCode Create(size_t size, void *helper, size_t helper_size,
-                     size_t min_alloc_size);
+                     size_t min_alloc_size, uint64_t fast_alloc);
     ErrorCode Destroy();
     ErrorCode Verify();
     ErrorCode Recover();

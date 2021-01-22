@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -176,7 +176,8 @@ public:
     void *GlobalToLocal(GlobalPtr ptr);
     GlobalPtr LocalToGlobal(void *addr);
 
-    ErrorCode CreateHeap(PoolId id, size_t shelf_size, size_t min_alloc_size, mode_t mode);
+    ErrorCode CreateHeap(PoolId id, size_t shelf_size, size_t min_alloc_size,
+                         uint64_t flags, mode_t mode);
     ErrorCode DestroyHeap(PoolId id);
     ErrorCode FindHeap(PoolId id, Heap **heap);
     Heap *FindHeap(PoolId id);
@@ -397,8 +398,9 @@ Region *MemoryManager::Impl_::FindRegion(PoolId id)
     return ret;
 }
 
-ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size, size_t min_alloc_size, mode_t mode)
-{
+ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size,
+                                           size_t min_alloc_size,
+                                           uint64_t flags, mode_t mode) {
     assert(is_ready_ == true);
     assert(id > 0);
     ErrorCode ret = NO_ERROR;
@@ -420,7 +422,7 @@ ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size, size_t min_al
 #else
     DistHeap heap(id);
 #endif
-    ret = heap.Create(size, min_alloc_size, mode);
+    ret = heap.Create(size, min_alloc_size, flags, mode);
     if (ret == NO_ERROR)
     {
         SetType(id, PoolType::HEAP);
@@ -823,9 +825,10 @@ Region *MemoryManager::FindRegion(PoolId id)
     return pimpl_->FindRegion(id);
 }
 
-ErrorCode MemoryManager::CreateHeap(PoolId id, size_t size, size_t min_alloc_size, mode_t mode)
-{
-    return pimpl_->CreateHeap(id, size, min_alloc_size, mode);
+ErrorCode MemoryManager::CreateHeap(PoolId id, size_t size,
+                                    size_t min_alloc_size, uint64_t flags,
+                                    mode_t mode) {
+    return pimpl_->CreateHeap(id, size, min_alloc_size, flags, mode);
 }
 
 ErrorCode MemoryManager::DestroyHeap(PoolId id)

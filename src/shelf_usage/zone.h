@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -34,91 +34,101 @@ namespace nvmm {
 
 class Zone {
 public:
-    Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
-	 size_t max_pool_size, void *helper, size_t helper_size);
-    
-    //Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
-    //     size_t max_pool_size, void *helper, size_t helper_size, void *zoneheader_ptr, size_t zoneheader_ptr_size);
+  Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
+       uint64_t fast_alloc, size_t max_pool_size, void *helper,
+       size_t helper_size);
 
-    Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size);
+  // Zone(void *addr, size_t initial_pool_size, size_t min_object_size,
+  //     size_t max_pool_size, void *helper, size_t helper_size, void
+  //     *zoneheader_ptr, size_t zoneheader_ptr_size);
 
-    //Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size, void *zoneheader_ptr, size_t zoneheader_size);
+  Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size);
 
-    ~Zone();
-    
-    // Static function to return header size
-    static size_t get_header_size(size_t shelf_size, size_t min_obj_size);
+  // Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size,
+  // void *zoneheader_ptr, size_t zoneheader_size);
 
-    // returns 0 if no blocks are currently available
-    Offset alloc(size_t size);
-    // [unsafe_]free(0) is a no-op
-    void free(Offset block);
-    void merge();
-    void offline_recover(); // grow, merge, and garbage collection; must run offline
-    void online_recover(); // merge; can run online
+  ~Zone();
 
-    // TODO
-    // void recover_online(); // for grow
+  // Static function to return header size
+  static size_t get_header_size(size_t shelf_size, size_t min_obj_size);
 
-    // TODO
-    // requires all writes to block block have already been persisted
-    //    void     unsafe_free(Offset block);
+  // returns 0 if no blocks are currently available
+  Offset alloc(size_t size);
+  // [unsafe_]free(0) is a no-op
+  void free(Offset block);
+  void merge();
+  void
+  offline_recover(); // grow, merge, and garbage collection; must run offline
+  void online_recover(); // merge; can run online
 
-    bool IsValidOffset(Offset p);
+  // TODO
+  // void recover_online(); // for grow
 
-    // converting between external Offset (with size encoded) and local-address-space pointers
-    void*    OffsetToPtr(Offset p);
-    Offset PtrToOffset (void*    p);
-    
-    size_t get_bitmap_offset();
+  // TODO
+  // requires all writes to block block have already been persisted
+  //    void     unsafe_free(Offset block);
 
-    // for delayed free
-    uint64_t min_obj_size();
+  bool IsValidOffset(Offset p);
 
-    Zone(const Zone&)            = delete;
-    Zone& operator=(const Zone&) = delete;
+  // converting between external Offset (with size encoded) and
+  // local-address-space pointers
+  void *OffsetToPtr(Offset p);
+  Offset PtrToOffset(void *p);
 
-    // debugging
-    void print_bitmap();
-    void print_freelist();
-    void stats();
+  size_t get_bitmap_offset();
 
- private:
-    char *shelf_location_ptr;
-    char *header_ptr;
-    size_t header_size;
-    char *zone_header_ptr;
-    size_t zone_header_size;
+  // for delayed free
+  uint64_t min_obj_size();
 
-    // Starting address used for merge bitmap
-    uint8_t *merge_bitmap_start_addr;
+  Zone(const Zone &) = delete;
+  Zone &operator=(const Zone &) = delete;
 
-    // shortcut for from_Offset; does not work well on Zone*:
-    //   need (*fba)[ptr] for that case
-    void* operator[](Offset p) { return from_Offset(p); }
+  // debugging
+  void print_bitmap();
+  void print_freelist();
+  void stats();
 
-    // converting to and from local-address-space pointers (Offset is NOT encoded with size)
-    void*    from_Offset(Offset p);
-    Offset to_Offset  (void*    p);
+private:
+  char *shelf_location_ptr;
+  char *header_ptr;
+  size_t header_size;
+  char *zone_header_ptr;
+  size_t zone_header_size;
 
-    bool grow();
-    bool is_grow_in_progress(struct Zone_Header *zoneheader);
-    bool is_merge_in_progress(struct Zone_Header *zoneheader);
-    uint64_t get_level(struct Zone_Header *zoneheader, Offset ptr);
-    void modify_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr, bool set);
-    void set_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr);
-    void reset_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level, Offset ptr);
-    bool merge(struct Zone_Header *zoneheader, uint64_t level);
-    void grow_crash_recovery();
-    void merge_crash_recovery();
-    void garbage_collection();
+  // Starting address used for merge bitmap
+  uint8_t *merge_bitmap_start_addr;
 
-    bool enter_merge(struct Zone_Header *zoneheader);
-    bool leave_merge(struct Zone_Header *zoneheader);
-    void swap_freelist(struct Zone_Header *zoneheader, uint64_t level);
-    void create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level);
-    void do_merge(struct Zone_Header *zoneheader, uint64_t level);
-    void finish_merge(struct Zone_Header *zoneheader, uint64_t level);
+  // shortcut for from_Offset; does not work well on Zone*:
+  //   need (*fba)[ptr] for that case
+  void *operator[](Offset p) { return from_Offset(p); }
+
+  // converting to and from local-address-space pointers (Offset is NOT encoded
+  // with size)
+  void *from_Offset(Offset p);
+  Offset to_Offset(void *p);
+
+  bool grow();
+  bool is_grow_in_progress(struct Zone_Header *zoneheader);
+  bool is_merge_in_progress(struct Zone_Header *zoneheader);
+  uint64_t get_level(struct Zone_Header *zoneheader, Offset ptr);
+  void modify_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level,
+                         Offset ptr, bool set);
+  void set_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level,
+                      Offset ptr);
+  void reset_bitmap_bit(struct Zone_Header *zoneheader, uint64_t level,
+                        Offset ptr);
+  bool merge(struct Zone_Header *zoneheader, uint64_t level);
+  void grow_crash_recovery();
+  void merge_crash_recovery();
+  void garbage_collection();
+  void clear_data(Offset block, struct Zone_Header *zoneheader, uint64_t level);
+
+  bool enter_merge(struct Zone_Header *zoneheader);
+  bool leave_merge(struct Zone_Header *zoneheader);
+  void swap_freelist(struct Zone_Header *zoneheader, uint64_t level);
+  void create_merge_bitmap(struct Zone_Header *zoneheader, uint64_t level);
+  void do_merge(struct Zone_Header *zoneheader, uint64_t level);
+  void finish_merge(struct Zone_Header *zoneheader, uint64_t level);
 };
 
 

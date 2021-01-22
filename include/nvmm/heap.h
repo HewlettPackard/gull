@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -32,6 +32,7 @@
 namespace nvmm {
 
 #define NVMM_NO_BG_THREAD 0x0001
+#define NVMM_FAST_ALLOC 0x0010
 
 class Heap {
   public:
@@ -51,6 +52,7 @@ class Heap {
 
     virtual GlobalPtr Alloc(EpochOp &op, size_t size) { return (GlobalPtr)0; };
     virtual void Free(EpochOp &op, GlobalPtr global_ptr){};
+    virtual void Free(EpochOp &op, Offset offset){};
 
     // Functions for Offset based free and alloc function
     virtual Offset AllocOffset(size_t size) { return 0; };
@@ -68,6 +70,7 @@ class Heap {
     virtual void Stats(){};
     virtual size_t Size() { return 0; };
     virtual void OfflineFree(){};
+    virtual void delayed_free_fn(){};
 };
 
 } // namespace nvmm

@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -58,7 +58,7 @@ size_t ShelfHeap::get_header_size(size_t shelf_size, size_t min_obj_size) {
 }
 
 ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size,
-                            size_t min_alloc_size) {
+                            size_t min_alloc_size, uint64_t fast_alloc) {
     assert(IsOpen() == false);
     assert(shelf_.Exist() == true);
 
@@ -80,8 +80,8 @@ ErrorCode ShelfHeap::Create(size_t zone_size, void *helper, size_t helper_size,
     // create zone layout
     // TODO: this will fail if the shelf file already exists; if the file exists
     // and it is already inited, it will fail
-    Zone *zone = new Zone(addr_, zone_size, min_alloc_size, zone_size, helper,
-                          helper_size);
+    Zone *zone = new Zone(addr_, zone_size, min_alloc_size, fast_alloc,
+                          zone_size, helper, helper_size);
     delete zone;
 
     ret = UnmapCloseShelf();
