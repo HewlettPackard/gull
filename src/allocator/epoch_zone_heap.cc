@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -118,9 +118,9 @@ inline size_t header_size_round_up() {
 
 EpochZoneHeap::EpochZoneHeap(PoolId pool_id)
     : gh_{NULL}, pool_id_{pool_id}, pool_{pool_id}, rmb_size_{0}, rmb_{NULL},
-      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false}, 
-      is_invalid_ {false}, no_bgthread_{false}, cleaner_start_{false}, 
-      cleaner_stop_{false}, cleaner_running_{false} {}
+      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false},
+      is_invalid_{false}, no_bgthread_{false}, fast_alloc_{0},
+      cleaner_start_{false}, cleaner_stop_{false}, cleaner_running_{false} {}
 
 EpochZoneHeap::~EpochZoneHeap() {
     if (IsOpen() == true) {
@@ -130,7 +130,7 @@ EpochZoneHeap::~EpochZoneHeap() {
 
 // Creates a heap with size next power of two of the passed size
 ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
-                                mode_t mode) {
+                                uint64_t flags, mode_t mode) {
     TRACE();
 
     //
@@ -224,13 +224,16 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
 
         shelf_idx = kZoneIdx;
         min_obj_size_ = min_alloc_size;
+        if (flags & NVMM_FAST_ALLOC) {
+            fast_alloc_ = 1;
+        }
         header_size_ = header_size_ - reserved;
         ret = pool_.AddShelf(shelf_idx,
                              [this](ShelfFile *shelf, size_t shelf_size) {
                                  ShelfHeap shelf_heap(shelf->GetPath());
                                  return shelf_heap.Create(
                                      shelf_size, header_[0], header_size_,
-                                     min_obj_size_);
+                                     min_obj_size_, fast_alloc_);
                              },
                              false, mode);
         if (ret != NO_ERROR) {
@@ -256,6 +259,7 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
         fam_atomic_u64_write(&gh_->sz[0].headeroffset, 0);
         fam_atomic_u64_write(&gh_->sz[0].shelfsize, shelf_size);
         fam_atomic_u64_write(&gh_->total_shelfs, 1);
+        fam_atomic_u64_write(&gh_->fast_alloc, fast_alloc_);
 
         // unmap and close the region
         ret = region_->Unmap(mapped_addr_[shelf_num], header_size_ + reserved);
@@ -405,7 +409,7 @@ ErrorCode EpochZoneHeap::Resize(size_t size) {
                              return shelf_heap.Create(
                                  shelf_size_for_create_,
                                  header_[shelf_id_for_create_ - 1],
-                                 header_size_, min_obj_size_);
+                                 header_size_, min_obj_size_, fast_alloc_);
                          },
                          false, perm);
     if (ret != NO_ERROR) {
@@ -687,6 +691,8 @@ ErrorCode EpochZoneHeap::Open(int flags) {
         return HEAP_OPEN_FAILED;
     }
 
+    fast_alloc_ = fam_atomic_u64_read(&gh_->fast_alloc);
+
     int total_data_shelfs = get_total_data_shelfs();
 
     // Loop to open all the shelfs
@@ -923,6 +929,34 @@ GlobalPtr EpochZoneHeap::Alloc(EpochOp &op, size_t size) {
     (void)op; // we don't use epoch to do allocation, but this allocation must
               // be in an EpochOp
     return Alloc(size);
+}
+
+void EpochZoneHeap::Free(EpochOp &op, Offset offset) {
+    ASSERT_IS_OPEN();
+    // Get the shelfIndex from shelfIndex + offset
+    int shelf_num = get_shelfnum_from_shelfIndexoffset(offset);
+    // Get only the offset from shelfIndex + offset
+    offset = get_offset_from_shelfIndexoffset(offset);
+
+    if ((shelf_num + 1) > total_mapped_shelfs_) {
+        ErrorCode ret = OpenNewShelfs();
+        // TODO: Free does not return any value, So we will need to throw
+        // exception
+        if (ret != NO_ERROR) {
+            LOG(trace) << "mapping new shelf failed: " << ret;
+            return;
+        }
+    }
+
+    if (rmb_[shelf_num]->IsValidOffset(offset) == false) {
+        return;
+    }
+
+    {
+        EpochCounter e = op.reported_epoch();
+        global_list_[shelf_num][(e + 3) % kListCnt].push(
+            bitmap_start_[shelf_num], offset / min_obj_size_);
+    }
 }
 
 void EpochZoneHeap::Free(EpochOp &op, GlobalPtr global_ptr) {
@@ -1187,6 +1221,51 @@ void *EpochZoneHeap::GlobalToLocal(GlobalPtr global_ptr) {
     return local_ptr;
 }
 
+void EpochZoneHeap::delayed_free_fn() {
+    TRACE();
+    ASSERT_IS_OPEN();
+    Offset offset;
+
+    for (int shelf_num = 0; shelf_num < total_mapped_shelfs_; shelf_num++) {
+        if (fam_atomic_u64_read(&gh_->destroy_in_progress)) {
+            is_invalid_ = true;
+            for (int shelf_num = 0; shelf_num < total_mapped_shelfs_;
+                 shelf_num++) {
+                rmb_[shelf_num]->MarkInvalid();
+            }
+            Close();
+            return;
+        }
+        uint64_t i = 0;
+        EpochManager *em = EpochManager::GetInstance();
+        for (; i < kFreeCnt; i++) {
+
+            {
+                EpochOp op(em);
+                EpochCounter e = op.reported_epoch();
+                offset = global_list_[shelf_num][(e) % kListCnt].pop(
+                             bitmap_start_[shelf_num]) *
+                         min_obj_size_;
+            }
+            if (offset == 0)
+                break;
+            LOG(trace) << " freeing block [" << offset << "]";
+            rmb_[shelf_num]->Free(offset);
+        }
+
+        if (fam_atomic_u64_read(&gh_->destroy_in_progress)) {
+            is_invalid_ = true;
+            for (int shelf_num = 0; shelf_num < total_mapped_shelfs_;
+                 shelf_num++) {
+                rmb_[shelf_num]->MarkInvalid();
+            }
+            Close();
+            return;
+        }
+        LOG(trace) << " in total " << i << " blocks have been freed";
+    }
+}
+
 int EpochZoneHeap::StartWorker() {
     // start the cleaner thread
     std::lock_guard<std::mutex> mutex(cleaner_mutex_);
@@ -1229,6 +1308,7 @@ int EpochZoneHeap::StopWorker() {
 void EpochZoneHeap::BackgroundWorker() {
     TRACE();
     ASSERT_IS_OPEN();
+    Offset offset;
 
     while (1) {
         LOG(trace) << "cleaner: sleep";
@@ -1250,10 +1330,6 @@ void EpochZoneHeap::BackgroundWorker() {
         }
         // do work
         for (int shelf_num = 0; shelf_num < total_mapped_shelfs_; shelf_num++) {
-
-            EpochManager *em = EpochManager::GetInstance();
-            EpochOp op(em);
-            EpochCounter e = op.reported_epoch();
             if (fam_atomic_u64_read(&gh_->destroy_in_progress)) {
                 is_invalid_ = true;
                 for (int shelf_num = 0; shelf_num < total_mapped_shelfs_;
@@ -1264,17 +1340,37 @@ void EpochZoneHeap::BackgroundWorker() {
                 LOG(trace) << "cleaner: exiting...";
                 return;
             }
-            LOG(trace) << "cleaner: now looking at epoch " << e;
             uint64_t i = 0;
-            for (; i < kFreeCnt; i++) {
-                Offset offset = global_list_[shelf_num][e % kListCnt].pop(
-                                    bitmap_start_[shelf_num]) *
-                                min_obj_size_;
-                if (offset == 0)
-                    break;
-                // TODO: a crash here will leak memory
-                LOG(trace) << " freeing block [" << offset << "]";
-                rmb_[shelf_num]->Free(offset);
+            EpochManager *em = EpochManager::GetInstance();
+            if (fast_alloc_) {
+                for (; i < kFreeCnt; i++) {
+
+                    {
+                        EpochOp op(em);
+                        EpochCounter e = op.reported_epoch();
+                        offset = global_list_[shelf_num][e % kListCnt].pop(
+                                     bitmap_start_[shelf_num]) *
+                                 min_obj_size_;
+                    }
+                    if (offset == 0)
+                        break;
+                    // TODO: a crash here will leak memory
+                    LOG(trace) << " freeing block [" << offset << "]";
+                    rmb_[shelf_num]->Free(offset);
+                }
+            } else {
+                EpochOp op(em);
+                EpochCounter e = op.reported_epoch();
+                for (; i < kFreeCnt; i++) {
+                    offset = global_list_[shelf_num][e % kListCnt].pop(
+                                 bitmap_start_[shelf_num]) *
+                             min_obj_size_;
+                    if (offset == 0)
+                        break;
+                    // TODO: a crash here will leak memory
+                    LOG(trace) << " freeing block [" << offset << "]";
+                    rmb_[shelf_num]->Free(offset);
+                }
             }
             if (fam_atomic_u64_read(&gh_->destroy_in_progress)) {
                 is_invalid_ = true;

@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -58,6 +58,7 @@ enum EpochZoneHeapOps { OP_RESIZE = 1, OP_CHANGE_PERM = 2 };
 struct GlobalHeader {
     uint64_t op_in_progress;
     uint64_t destroy_in_progress;
+    uint64_t fast_alloc;
     uint64_t total_shelfs;
     uint64_t total_size;
     shelf_size sz[ShelfId::kMaxShelfCount];
@@ -73,6 +74,7 @@ class EpochZoneHeap : public Heap {
     ~EpochZoneHeap();
 
     ErrorCode Create(size_t shelf_size, size_t min_alloc_size,
+                     uint64_t fast_alloc,
                      mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     ErrorCode Destroy();
     bool Exist();
@@ -97,6 +99,7 @@ class EpochZoneHeap : public Heap {
     Offset AllocOffset(size_t size);
 
     void Free(EpochOp &op, GlobalPtr global_ptr);
+    void Free(EpochOp &op, Offset offset);
     void Free(Offset offset);
 
     void *OffsetToLocal(Offset offset);
@@ -109,6 +112,7 @@ class EpochZoneHeap : public Heap {
     void OnlineRecover();
     void OfflineRecover();
     void Stats();
+    void delayed_free_fn();
 
   private:
     static int const kHeaderIdx = 0; // headers for zone
@@ -136,6 +140,7 @@ class EpochZoneHeap : public Heap {
 
     ZoneEntryStack *global_list_[ShelfId::kMaxShelfCount];
     uint64_t min_obj_size_;
+    uint64_t fast_alloc_;
 
     bool is_open_;
     bool is_invalid_;

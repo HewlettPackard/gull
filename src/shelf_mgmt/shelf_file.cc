@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2017 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -263,7 +263,7 @@ ErrorCode ShelfFile::Map(void *addr_hint, void **mapped_addr) {
     assert(shelf_id_.IsValid() == true);
     void *addr;
     ShelfManager::Lock();
-    addr = ShelfManager::LookupShelf(shelf_id_);
+    addr = ShelfManager::FindAndOpenShelf(shelf_id_);
     if (addr != NULL) {
         *mapped_addr = addr;
         ShelfManager::Unlock();
@@ -304,11 +304,21 @@ ErrorCode ShelfFile::Unmap(void *mapped_addr, bool unregister) {
         return Unmap(mapped_addr, size, true);
     } else {
         void *addr;
+        bool needs_unmap = false;
         ShelfManager::Lock();
-        addr = ShelfManager::LookupShelf(shelf_id_);
+        addr = ShelfManager::FindAndCloseShelf(shelf_id_);
+        if (addr == NULL) {
+          addr = ShelfManager::UnregisterShelf(shelf_id_);
+          needs_unmap = true;
+        }
         assert(addr == mapped_addr);
         ShelfManager::Unlock();
-        return NO_ERROR;
+        if (needs_unmap == false)
+          return NO_ERROR;
+        else {
+          size_t size = Size();
+          return Unmap(mapped_addr, size, true);
+        }
     }
 }
 

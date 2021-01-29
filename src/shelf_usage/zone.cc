@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -127,6 +127,8 @@ struct Zone_Header {
     uint64_t multiple_factor;
     // The mimimum size of the object supported in the Zone
     size_t min_obj_size;
+    // Configuration option for enabling and disabling delayed_free
+    uint64_t zone_fast_alloc;
     // Current level of the zone.
     uint64_t current_zone_level;
     // Epoch stored to track the grow and prevent multiple processes from growing simultaneously.
@@ -219,11 +221,8 @@ the underlying Shelf Object. As the application/caller has already done
 the mmap, we just have to set the underlying shelf object fields
 appropriately and then initialize the Zone Header.
 */
-Zone::Zone(void *addr,
-           size_t max_pool_size, void *helper, size_t helper_size) :
-    shelf_location_ptr((char*)addr),
-    header_ptr((char*)helper)
-{
+Zone::Zone(void *addr, size_t max_pool_size, void *helper, size_t helper_size)
+    : shelf_location_ptr((char *)addr), header_ptr((char *)helper) {
     zone_header_ptr = (char *)helper;
     struct Zone_Header *zoneheader = (struct Zone_Header *)zone_header_ptr;
     uint64_t min_obj_size = nvmm_read(&zoneheader->min_obj_size);
@@ -239,131 +238,136 @@ Zone::Zone(void *addr,
         return;
 }
 
-
 Zone::~Zone()
 {
     //print_freelist();
 	return;
 }
 
-Zone::Zone(void *addr,
-           size_t initial_pool_size,
-           size_t min_obj_size,
-           size_t max_pool_size,
-           void *helper,
-           size_t helper_size):
-    shelf_location_ptr((char*)addr),
-    header_ptr((char*)helper)
-{
-        uint64_t max_level_per_zone = 0;
-        size_t bitmap_size = 0;
-        size_t merge_bitmap_size = 0;
-        int64_t old_value;
-        zone_header_ptr = (char*)header_ptr;
-        struct Zone_Header *zoneheader = (struct Zone_Header *)zone_header_ptr;
-        uint64_t zoneheader_size;
-        uint64_t freelist_level;
-        void *advance_ptr;
-        Offset ptr;
-        size_t chunk_size;
-        std::ostringstream message;
-	size_t max_zone_size;
-	size_t max_zone_level;
-     
-        // zoneheader_size is rounded up to the closest power of two (i.e., a valid object/chunk size)
-        zoneheader_size =  get_zoneheader_size(max_pool_size,min_obj_size);
-        fam_memset_persist(zoneheader, 0, zoneheader_size);
+Zone::Zone(void *addr, size_t initial_pool_size, size_t min_obj_size,
+           uint64_t fast_alloc, size_t max_pool_size, void *helper,
+           size_t helper_size)
+    : shelf_location_ptr((char *)addr), header_ptr((char *)helper) {
+    uint64_t max_level_per_zone = 0;
+    size_t bitmap_size = 0;
+    size_t merge_bitmap_size = 0;
+    int64_t old_value;
+    zone_header_ptr = (char *)header_ptr;
+    struct Zone_Header *zoneheader = (struct Zone_Header *)zone_header_ptr;
+    uint64_t zoneheader_size;
+    uint64_t freelist_level;
+    void *advance_ptr;
+    Offset ptr;
+    size_t chunk_size;
+    std::ostringstream message;
+    size_t max_zone_size;
+    size_t max_zone_level;
 
-        if (min_obj_size < MIN_OBJ_SIZE) {
-                message << "min size less than " << MIN_OBJ_SIZE << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    // zoneheader_size is rounded up to the closest power of two (i.e., a valid
+    // object/chunk size)
+    zoneheader_size = get_zoneheader_size(max_pool_size, min_obj_size);
+    fam_memset_persist(zoneheader, 0, zoneheader_size);
 
-        if (!(is_power_of_two(min_obj_size))) {
-                message << "min size is not a power of two " << std::endl;
-                throw std::runtime_error(message.str());
-        }
-        
-        min_obj_size = MAX(MIN_OBJ_SIZE, min_obj_size);
-        old_value = cas64((int64_t *)&zoneheader->min_obj_size, 0, min_obj_size);
-        if (old_value != 0) {
-                message << "Zone header init failed" << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    if (min_obj_size < MIN_OBJ_SIZE) {
+        message << "min size less than " << MIN_OBJ_SIZE << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        // TODO: User driven multiple factor???
-        old_value = cas64((int64_t *)&zoneheader->multiple_factor, 0, 1);
-        if (old_value != 0) {
-                message << "Zone header init failed" << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    if (!(is_power_of_two(min_obj_size))) {
+        message << "min size is not a power of two " << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        if (max_pool_size > MAX_ZONE_SIZE) {
-                message << "max_pool_size more than " << MAX_ZONE_SIZE << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    min_obj_size = MAX(MIN_OBJ_SIZE, min_obj_size);
+    old_value = cas64((int64_t *)&zoneheader->min_obj_size, 0, min_obj_size);
+    if (old_value != 0) {
+        message << "Zone header init failed" << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        if (!(is_power_of_two(max_pool_size))) {
-            message << "max_pool_size is not a power of two: " << max_pool_size << std::endl;
-                throw std::runtime_error(message.str());
-        }
-        max_zone_size = MIN(max_pool_size, MAX_ZONE_SIZE);
-        old_value = cas64((int64_t *)&zoneheader->max_zone_size, 0, max_zone_size);
-        if (old_value != 0) {
-                message << "Zone header init failed" << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    old_value = cas64((int64_t *)&zoneheader->zone_fast_alloc, 0, fast_alloc);
+    if (old_value != 0) {
+        message << "Zone header init failed" << std::endl;
+        throw std::runtime_error(message.str());
+    }
+    // TODO: User driven multiple factor???
+    old_value = cas64((int64_t *)&zoneheader->multiple_factor, 0, 1);
+    if (old_value != 0) {
+        message << "Zone header init failed" << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
+    if (max_pool_size > MAX_ZONE_SIZE) {
+        message << "max_pool_size more than " << MAX_ZONE_SIZE << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        max_level_per_zone = find_level_from_size(max_zone_size, min_obj_size);
-        max_zone_level = MIN(max_level_per_zone, MAX_LEVEL_PER_ZONE);
-        old_value = cas64((int64_t *)&zoneheader->max_zone_level, 0, max_zone_level);
-        if (old_value != 0) {
-                message << "Zone header init failed" << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    if (!(is_power_of_two(max_pool_size))) {
+        message << "max_pool_size is not a power of two: " << max_pool_size
+                << std::endl;
+        throw std::runtime_error(message.str());
+    }
+    max_zone_size = MIN(max_pool_size, MAX_ZONE_SIZE);
+    old_value = cas64((int64_t *)&zoneheader->max_zone_size, 0, max_zone_size);
+    if (old_value != 0) {
+        message << "Zone header init failed" << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
+    max_level_per_zone = find_level_from_size(max_zone_size, min_obj_size);
+    max_zone_level = MIN(max_level_per_zone, MAX_LEVEL_PER_ZONE);
+    old_value =
+        cas64((int64_t *)&zoneheader->max_zone_level, 0, max_zone_level);
+    if (old_value != 0) {
+        message << "Zone header init failed" << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        // for delayed-free
-        // Min value should be 8 bytes.
-        bitmap_size = ((1UL << max_zone_level) / BYTE);
-        merge_bitmap_size = get_merge_bitmap_size(max_pool_size,min_obj_size);
-        //printf("Zone Header size = %ld, Bitmap Size = %ld, Merge Bitmap Size = %ld\n", zoneheader_size, bitmap_size, merge_bitmap_size);
+    // for delayed-free
+    // Min value should be 8 bytes.
+    bitmap_size = ((1UL << max_zone_level) / BYTE);
+    merge_bitmap_size = get_merge_bitmap_size(max_pool_size, min_obj_size);
+    // printf("Zone Header size = %ld, Bitmap Size = %ld, Merge Bitmap Size =
+    // %ld\n", zoneheader_size, bitmap_size, merge_bitmap_size);
 
-        header_ptr = (char*)helper + zoneheader_size + merge_bitmap_size;
-        header_size = get_header_bitmap_size(max_zone_size, min_obj_size);
+    header_ptr = (char *)helper + zoneheader_size + merge_bitmap_size;
+    header_size = get_header_bitmap_size(max_zone_size, min_obj_size);
 
-        assert(bitmap_size >= 8 && merge_bitmap_size >= 8);
-        if (header_size < bitmap_size) {
-                message << "insufficient header area, requiring " << (bitmap_size) << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    assert(bitmap_size >= 8 && merge_bitmap_size >= 8);
+    if (header_size < bitmap_size) {
+        message << "insufficient header area, requiring " << (bitmap_size)
+                << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        // zero out the header region
-        // TODO: is this necessary?
-        fam_memset_persist(header_ptr, 0, header_size);
+    // zero out the header region
+    // TODO: is this necessary?
+    fam_memset_persist(header_ptr, 0, header_size);
 
-        if (initial_pool_size <= (merge_bitmap_size)) {
-                message << "initial_pool_size is less than minimum zone size of " << (merge_bitmap_size) << std::endl;
-                throw std::runtime_error(message.str());
-        } else if (!(is_power_of_two(initial_pool_size))) {
-                message << "initial_pool_size is not a power of two " << std::endl;
-                throw std::runtime_error(message.str());
-        } else if (initial_pool_size <= nvmm_read(&zoneheader->min_obj_size)) {
-                message << "initial_pool_size is less than or equal to the minimum object size" << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    if (initial_pool_size <= (merge_bitmap_size)) {
+        message << "initial_pool_size is less than minimum zone size of "
+                << (merge_bitmap_size) << std::endl;
+        throw std::runtime_error(message.str());
+    } else if (!(is_power_of_two(initial_pool_size))) {
+        message << "initial_pool_size is not a power of two " << std::endl;
+        throw std::runtime_error(message.str());
+    } else if (initial_pool_size <= nvmm_read(&zoneheader->min_obj_size)) {
+        message << "initial_pool_size is less than or equal to the minimum "
+                   "object size"
+                << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        old_value = cas64((int64_t *)&zoneheader->current_zone_level, 0,
-                         find_level_from_size(initial_pool_size, min_obj_size));
-        if (old_value != 0) {
-                message << "Zone header init failed" << std::endl;
-                throw std::runtime_error(message.str());
-        }
+    old_value = cas64((int64_t *)&zoneheader->current_zone_level, 0,
+                      find_level_from_size(initial_pool_size, min_obj_size));
+    if (old_value != 0) {
+        message << "Zone header init failed" << std::endl;
+        throw std::runtime_error(message.str());
+    }
 
-        // init current_merge_level
-        fam_atomic_64_write((int64_t *)&zoneheader->current_merge_level, -1);
-        merge_bitmap_start_addr = (uint8_t*)(zone_header_ptr + zoneheader_size);
+    // init current_merge_level
+    fam_atomic_64_write((int64_t *)&zoneheader->current_merge_level, -1);
+    merge_bitmap_start_addr = (uint8_t *)(zone_header_ptr + zoneheader_size);
 
 #if 0
        // Code commented out now, as we cannot allocate starting of a zone (Offset 0).
@@ -389,9 +393,7 @@ Zone::Zone(void *addr,
                      
         //print_freelist();
         //print_bitmap();
-
 }
-
 
 uint64_t Zone::min_obj_size()
 {
@@ -435,7 +437,8 @@ Offset Zone::alloc(size_t size)
 	Again do the same until the desired size is reached.
 	*/
 	size_t min_obj_size;
-	Offset new_chunk_ptr;
+        uint64_t zone_fast_alloc;
+        Offset new_chunk_ptr;
 	uint64_t current_zone_level, max_zone_level, current_zone_level_old;
 	uint64_t orig_freelist_level, level;
 	size_t cur_size, chunk_size;
@@ -444,7 +447,9 @@ Offset Zone::alloc(size_t size)
 	
 	// TODO: size > current_zone_size
 	min_obj_size = nvmm_read(&zoneheader->min_obj_size);
-	//min_obj_size = fam_atomic_u64_read((uint64_t *)&zoneheader->min_obj_size);
+        zone_fast_alloc = nvmm_read(&zoneheader->zone_fast_alloc);
+
+        //min_obj_size = fam_atomic_u64_read((uint64_t *)&zoneheader->min_obj_size);
 	chunk_size = next_power_of_two(MAX(size, min_obj_size));
 	orig_freelist_level = find_level_from_size(chunk_size, min_obj_size);
 
@@ -475,8 +480,11 @@ retry:	//current_zone_level = fam_atomic_u64_read(&zoneheader->current_zone_leve
 				level--;
 				cur_size = cur_size >> 1;
 			}
-			// Zero out the chunk before returning the pointer to the caller.
-			fam_memset_persist(from_Offset(result), 0, chunk_size);
+                        if (!zone_fast_alloc)
+                            // Zero out the chunk before returning the pointer
+                            // to the caller.
+                            fam_memset_persist(from_Offset(result), 0,
+                                               chunk_size);
                         CrashPoints::CrashHere("alloc before set bitmap");
 			set_bitmap_bit(zoneheader, orig_freelist_level, result);
                         return result;
@@ -548,10 +556,19 @@ void Zone::free(Offset block) {
     // Do we really need to do fam_persist???
     //int64_t* b = (int64_t*) from_Offset(block);
     //fam_persist(b, find_size_from_level);
+    if (zoneheader->zone_fast_alloc == 1)
+        clear_data(block, zoneheader, level);
 
     // TODO: to be safe, maybe we should check if the chunk was actually allocated or not
     reset_bitmap_bit(zoneheader, level, block);
     zoneheader->free_list[level].push(header_ptr, block/nvmm_read(&zoneheader->min_obj_size));
+}
+
+void Zone::clear_data(Offset block, struct Zone_Header *zoneheader,
+                      uint64_t level) {
+    size_t size =
+        find_size_from_level(level, nvmm_read(&zoneheader->min_obj_size));
+    fam_memset_persist(from_Offset(block), 0, size);
 }
 
 bool Zone::grow()
