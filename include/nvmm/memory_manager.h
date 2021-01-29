@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2020 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -109,7 +109,9 @@ public:
     // Return
     // - NO_ERROR: heap was created
     // - ID_FOUND: the given id is in use
-    ErrorCode CreateHeap(PoolId id, size_t shelf_size, size_t min_alloc_size = 64, mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    ErrorCode CreateHeap(PoolId id, size_t shelf_size,
+                         size_t min_alloc_size = 64, uint64_t flags = 0,
+                         mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 
     // Destroy the heap with the given id
     // Return

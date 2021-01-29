@@ -309,7 +309,7 @@ ErrorCode ShelfFile::Unmap(void *mapped_addr, bool unregister) {
         addr = ShelfManager::FindAndCloseShelf(shelf_id_);
         if (addr == NULL) {
           addr = ShelfManager::UnregisterShelf(shelf_id_);
-          needs_unmap = false;
+          needs_unmap = true;
         }
         assert(addr == mapped_addr);
         ShelfManager::Unlock();
