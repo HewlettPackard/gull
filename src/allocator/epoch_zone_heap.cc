@@ -1311,9 +1311,6 @@ void EpochZoneHeap::BackgroundWorker() {
     Offset offset;
 
     while (1) {
-        LOG(trace) << "cleaner: sleep";
-        usleep(kWorkerSleepMicroSeconds);
-        LOG(trace) << "cleaner: wakeup";
 
         // check if we are shutting down...
         {
@@ -1328,6 +1325,9 @@ void EpochZoneHeap::BackgroundWorker() {
                 return;
             }
         }
+        LOG(trace) << "cleaner: sleep";
+        usleep(kWorkerSleepMicroSeconds);
+        LOG(trace) << "cleaner: wakeup";
         // do work
         for (int shelf_num = 0; shelf_num < total_mapped_shelfs_; shelf_num++) {
             if (fam_atomic_u64_read(&gh_->destroy_in_progress)) {
