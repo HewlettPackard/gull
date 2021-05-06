@@ -79,6 +79,8 @@ NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
  $ cmake .. -DFAME=OFF
  $ make
  ```
+ Please set CMAKE_PREFIX_PATH to point to nvml install directory if it is not in
+ system path.
 
  On FAME:
 
