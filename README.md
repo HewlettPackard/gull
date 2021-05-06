@@ -55,22 +55,6 @@ NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
   $ sudo make install DESTDIR=/opt
   ```
 
-- Install libfam-atomic
-
-  ```
-  $ cd ~
-  $ sudo apt-get install autoconf autoconf-archive libtool
-  $ sudo apt-get --no-install-recommends install asciidoc xsltproc xmlto
-  $ git clone https://github.com/FabricAttachedMemory/libfam-atomic.git
-  $ cd libfam-atomic
-  $ bash autogen.sh
-  $ ./configure
-  $ make
-  $ sudo make install
-  ```
-
-- Setup [FAME](https://github.hpe.com/labs/mdc-toolkit/blob/master/guide-FAME.md) if you want to try NVMM on top of FAM
-
 ## Build & Test
 
 1. Download the source code:
@@ -114,6 +98,7 @@ NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
  Other build options include:
  - LOG: enable (ON) or disable (OFF, default) logging
  - USE_FAM_ATOMIC: use libfam_atomic (ON) or native atomics (OFF, default)
+   The flag USE_FAM_ATOMIC is not supported.
 
 4. Test
 
