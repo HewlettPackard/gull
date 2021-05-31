@@ -28,10 +28,10 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <yaml-cpp/yaml.h>
 
 #include "shelf_mgmt/shelf_manager.h"
 #include "config.h"
-#include "yaml-cpp/yaml.h"
 
 namespace nvmm {
 
