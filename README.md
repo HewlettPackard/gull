@@ -33,7 +33,7 @@ NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
 - Install additional packages
 
   ```
-  $ sudo apt-get install build-essential cmake libboost-all-dev
+  $ sudo apt-get install build-essential cmake libboost-all-dev libyaml-cpp-dev
   ```
 
   You can specify custom path for libboost by setting an environment variable BOOST_ROOT
