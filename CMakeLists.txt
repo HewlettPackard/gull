@@ -124,9 +124,10 @@ endif()
 # use libfam_atomic?
 #
 if(USE_FAM_ATOMIC)
-  message(STATUS "atomics library: FAM")
-  find_package(FamAtomic REQUIRED)
-  set(ARCH_LIBS ${ARCH_LIBS} ${FAM_ATOMIC_LIBRARY})
+  message(STATUS "Unsupported atomics library option 'FAM', falling back to atomics library: native")
+  add_definitions(-DFAM_ATOMIC_NATIVE)
+  #find_package(FamAtomic REQUIRED)
+  #set(ARCH_LIBS ${ARCH_LIBS} ${FAM_ATOMIC_LIBRARY})
 else()
   message(STATUS "atomics library: native")
   add_definitions(-DFAM_ATOMIC_NATIVE)
