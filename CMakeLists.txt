@@ -109,6 +109,9 @@ else()
   message(STATUS "logging: off")
 endif()
 
+# Read version number from VERSION file
+file(STRINGS "VERSION" VERSION_STR)
+
 #
 # add libpmem  
 #
