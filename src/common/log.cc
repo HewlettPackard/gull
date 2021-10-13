@@ -28,7 +28,7 @@
 
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/make_shared_object.hpp>
-#include <boost/utility/empty_deleter.hpp>
+#include <boost/core/null_deleter.hpp>
 
 #include <boost/log/core.hpp>
 #include <boost/log/sinks/sync_frontend.hpp>
@@ -82,7 +82,7 @@ void init_log(boost::log::trivial::severity_level level, std::string file_name)
     if (file_name.empty()) {
       // Add console output
       // We have to provide an empty deleter to avoid destroying the global stream object
-      boost::shared_ptr< std::ostream > stream(&std::clog, boost::empty_deleter());
+      boost::shared_ptr< std::ostream > stream(&std::clog, boost::null_deleter());
       sink->locked_backend()->add_stream(stream);
     } else {
       sink->locked_backend()->add_stream(boost::make_shared< std::ofstream >(file_name));
