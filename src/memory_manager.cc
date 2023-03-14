@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2022 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2023 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
  *  licenses. You may choose to be licensed under the terms of the 
@@ -92,9 +92,12 @@ int StartNVMM(std::string base, std::string user) {
           return SHELF_BASE_DIR_CREATE_FAILED;
         }
       } catch (boost::filesystem::filesystem_error const &err) {
+	  std::cout << "NVMM: failed to create base dir at " << config.ShelfBase 
+		    << "\nboost::filesystem::filesystem_error error code "
+		    << err.code() << std::endl;
           LOG(fatal) << "boost::filesystem::filesystem_error error code "
                      << err.code();
-           return err.code().value();
+          return err.code().value();
       }
     }
   } catch (boost::filesystem::filesystem_error const &err) {
