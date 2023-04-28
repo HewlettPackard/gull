@@ -1,12 +1,13 @@
 /*
- *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021,2023 Hewlett Packard Enterprise Development Company
+ * LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the GNU Lesser 
- *  General Public License Version 3, or (at your option) later with exceptions 
- *  included below, or under the terms of the  MIT license (Expat) available in 
+ *  licenses. You may choose to be licensed under the terms of the GNU Lesser
+ *  General Public License Version 3, or (at your option) later with exceptions
+ *  included below, or under the terms of the  MIT license (Expat) available in
  *  COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -118,10 +119,11 @@ inline size_t header_size_round_up() {
 }
 
 EpochZoneHeap::EpochZoneHeap(PoolId pool_id)
-    : gh_{NULL}, pool_id_{pool_id}, pool_{pool_id}, rmb_size_{0}, rmb_{NULL},
-      region_{NULL}, mapped_addr_{NULL}, header_{NULL}, is_open_{false},
-      is_invalid_{false}, no_bgthread_{false}, fast_alloc_{0},
-      cleaner_start_{false}, cleaner_stop_{false}, cleaner_running_{false} {}
+    : gh_{NULL}, pool_id_{pool_id}, pool_{pool_id}, rmb_addr_{NULL},
+      rmb_size_{0}, rmb_{NULL}, region_{NULL},
+      mapped_addr_{NULL}, header_{NULL}, is_open_{false}, is_invalid_{false},
+      no_bgthread_{false}, fast_alloc_{0}, cleaner_start_{false},
+      cleaner_stop_{false}, cleaner_running_{false} {}
 
 EpochZoneHeap::~EpochZoneHeap() {
     if (IsOpen() == true) {
@@ -287,10 +289,14 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
 //    If new size less than existing size, we do not need to do anything
 //    - return NO_ERROR.
 //
-// 2. Zone has a restriction that every shelf should be a power of 2.
+// 2. The output is new shelf index which is optional. If the new_shelf_idx
+// pointer is not NULL, 	  the new shelf index is assigned to this pointer. By
+// default the output pointer is set to NULL.
+//
+// 3. Zone has a restriction that every shelf should be a power of 2.
 //    So convert the size to next power of 2.
 //
-ErrorCode EpochZoneHeap::Resize(size_t size) {
+ErrorCode EpochZoneHeap::Resize(size_t size, ShelfIndex *new_shelf_idx) {
     TRACE();
 
     if (size > MAX_ZONE_SIZE) {
@@ -388,6 +394,10 @@ ErrorCode EpochZoneHeap::Resize(size_t size) {
     header_size_ = total_header_size - current_header_size;
 
     ShelfIndex shelf_idx = (ShelfIndex)(shelf_num + 1);
+
+    // Set output to new shelf index, if pointer is not NULL.
+    if (new_shelf_idx)
+        *new_shelf_idx = shelf_idx - 1;
     shelf_id_for_create_ = (int)shelf_idx;
 
     // Check if previous unfinished resize has a shelf created.
@@ -1045,6 +1055,7 @@ ErrorCode EpochZoneHeap::OpenShelf(int shelf_num) {
         (void)rmb_[shelf_num]->Close();
         return HEAP_OPEN_FAILED;
     }
+    rmb_addr_[shelf_num] = rmb_[shelf_num]->GetAddr();
     rmb_size_[shelf_num] = rmb_[shelf_num]->Size();
     total_mapped_shelfs_ = shelf_num + 1;
     return NO_ERROR;
@@ -1071,6 +1082,7 @@ ErrorCode EpochZoneHeap::CloseShelf(int shelf_num) {
     header_[shelf_num] = NULL;
     global_list_[shelf_num] = NULL;
     rmb_size_[shelf_num] = 0;
+    rmb_addr_[shelf_num] = NULL;
     return NO_ERROR;
 }
 
@@ -1265,6 +1277,14 @@ void EpochZoneHeap::delayed_free_fn() {
         }
         LOG(trace) << " in total " << i << " blocks have been freed";
     }
+}
+
+ErrorCode EpochZoneHeap::getStartAddress(int &numShelfs, void **&address,
+                                         size_t *&Shelfsize) {
+    numShelfs = total_mapped_shelfs_;
+    address = rmb_addr_;
+    Shelfsize = rmb_size_;
+    return NO_ERROR;
 }
 
 int EpochZoneHeap::StartWorker() {
