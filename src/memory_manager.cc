@@ -1,5 +1,5 @@
 /*
- *  (c) Copyright 2016-2022 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2023 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
  *  licenses. You may choose to be licensed under the terms of the 
@@ -33,7 +33,8 @@
 #include <stdlib.h>
 #include <string>
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
-#include <unistd.h>   // for getpagesize()
+#include <sys/statvfs.h>
+#include <unistd.h> // for getpagesize()
 
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h" // for PoolId
@@ -87,14 +88,17 @@ int StartNVMM(std::string base, std::string user) {
         if (boost::filesystem::create_directory(config.ShelfBase) == false) {
           LOG(fatal) << "NVMM: failed to create shelf base dir at "
                      << config.ShelfBase << std::endl;
-          std::cout << "NVMM: failed to create shelf base dir at "
+          std::cerr << "NVMM: failed to create shelf base dir at "
                     << config.ShelfBase << std::endl;
           return SHELF_BASE_DIR_CREATE_FAILED;
         }
       } catch (boost::filesystem::filesystem_error const &err) {
+          std::cerr << "NVMM: failed to create base dir at " << config.ShelfBase
+                    << "\nboost::filesystem::filesystem_error error code "
+                    << err.code() << std::endl;
           LOG(fatal) << "boost::filesystem::filesystem_error error code "
                      << err.code();
-           return err.code().value();
+          return err.code().value();
       }
     }
   } catch (boost::filesystem::filesystem_error const &err) {
@@ -109,13 +113,31 @@ int StartNVMM(std::string base, std::string user) {
   try {
     if (boost::filesystem::exists(shelf_base_path) == false) {
       LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << config.ShelfBase;
-      std::cout << "NVMM: LFS/tmpfs does not exist?" << std::endl;
+      std::cerr << "NVMM: LFS/tmpfs does not exist?" << std::endl;
       return SHELF_BASE_PATH_DOES_NOT_EXIST;
     }
   } catch (boost::filesystem::filesystem_error const &err) {
       LOG(fatal) << "boost::filesystem::filesystem_error Error code  "
                  << err.code();
        return err.code().value();
+  }
+
+  // Store device page size in config.PageSize if device pagesize is
+  // greater than system pagesize.
+  //
+  // Or else set 0 as device page size.
+  //
+  struct statvfs vfs;
+  if (statvfs(config.ShelfBase.c_str(), &vfs) == 0) {
+      if (vfs.f_frsize > (uint64_t)getpagesize())
+          config.PageSize = vfs.f_frsize;
+      else
+          config.PageSize = 0;
+
+  } else {
+      LOG(error) << "statvfs on device " << config.ShelfBase << " failed with "
+                 << errno;
+      config.PageSize = 0;
   }
 
   // create a root shelf for MemoryManager if it does not exist
@@ -125,12 +147,11 @@ int StartNVMM(std::string base, std::string user) {
     if (ret != NO_ERROR && ret != SHELF_FILE_FOUND) {
       LOG(fatal) << "NVMM: Failed to create the root shelf file: error code "
                  << ret << config.RootShelfPath;
-      std::cout << "NVMM: Failed to create the root shelf file: error code "
+      std::cerr << "NVMM: Failed to create the root shelf file: error code "
                 << ret << std::endl;
       return SHELF_FILE_CREATE_FAILED;
     }
   }
-
   // create a epoch shelf for EpochManager if it does not exist
   EpochShelf epoch_shelf(config.EpochShelfPath);
   if (epoch_shelf.Exist() == false) {
@@ -138,7 +159,7 @@ int StartNVMM(std::string base, std::string user) {
     if (ret != NO_ERROR && ret != SHELF_FILE_FOUND) {
       LOG(fatal) << "NVMM: Failed to create the epoch shelf file: error code "
                  << ret << config.EpochShelfPath;
-      std::cout << "NVMM: Failed to create the epoch shelf file: error code "
+      std::cerr << "NVMM: Failed to create the epoch shelf file: error code "
                 << ret << std::endl;
       return SHELF_FILE_CREATE_FAILED;
     }
@@ -218,9 +239,10 @@ public:
     GlobalPtr SetMetadataRegionRootPtr(int type, GlobalPtr);
     GlobalPtr GetATLRegionRootPtr(int type);
     GlobalPtr SetATLRegionRootPtr(int type, GlobalPtr);
+    uint64_t GetDevicePageSize();
+    void SetDevicePageSize(uint64_t size);
 
-
-private:
+  private:
     enum PoolType {
         NONE=0,
         REGION,
@@ -266,6 +288,7 @@ private:
     uint64_t *metadata_regionid_root_; // Store metadata region id's globalptr
     uint64_t *metadata_regionname_root_;// Store metadata region name's globalptr
     uint64_t *atl_regiondata_root_; // Store ATL region id's globalptr
+    uint64_t device_pagesize_;
 };
 
 ErrorCode MemoryManager::Impl_::Init()
@@ -275,6 +298,23 @@ ErrorCode MemoryManager::Impl_::Init()
     {
         LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << config.ShelfBase;
         exit(1);
+    }
+
+    // Store device page size in config.PageSize if device pagesize is
+    // greater than system pagesize.
+    //
+    // Or else set 0 as device page size.
+    //
+    struct statvfs vfs;
+    if (statvfs(config.ShelfBase.c_str(), &vfs) == 0) {
+        if (vfs.f_frsize > (uint64_t)getpagesize())
+            config.PageSize = vfs.f_frsize;
+        else
+            config.PageSize = 0;
+    } else {
+        LOG(error) << "statvfs on device " << config.ShelfBase
+                   << " failed with " << errno;
+        config.PageSize = 0;
     }
 
     if (root_shelf_.Exist() == false)
@@ -304,6 +344,7 @@ ErrorCode MemoryManager::Impl_::Init()
     //Region Id rootptr for ATL
     atl_regiondata_root_ = metadata_regionname_root_ + 1;
 
+    device_pagesize_ = config.PageSize;
     is_ready_ = true;
     return NO_ERROR;
 }
@@ -431,6 +472,8 @@ ErrorCode MemoryManager::Impl_::CreateHeap(PoolId id, size_t size,
     assert(is_ready_ == true);
     assert(id > 0);
     ErrorCode ret = NO_ERROR;
+
+    size = round_up_with_zero_check(size, config.PageSize);
 
     // Check if poolId > kMaxPoolCount    
     if (id >= Pool::kMaxPoolCount) {
@@ -792,6 +835,12 @@ GlobalPtr MemoryManager::Impl_::SetATLRegionRootPtr(int type, GlobalPtr regionPt
         }
     }
     return GlobalPtr(); // return an invalid global pointer;
+}
+
+uint64_t MemoryManager::Impl_::GetDevicePageSize() { return device_pagesize_; }
+
+void MemoryManager::Impl_::SetDevicePageSize(uint64_t size) {
+    device_pagesize_ = size;
 }
 
 /*
