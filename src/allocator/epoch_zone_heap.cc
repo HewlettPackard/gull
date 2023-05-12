@@ -1,6 +1,6 @@
 /*
- *  (c) Copyright 2016-2021,2023 Hewlett Packard Enterprise Development Company
- * LP.
+ *  (c) Copyright 2016-2021,2023 Hewlett Packard Enterprise Development
+ *  Company LP.
  *
  *  This software is available to you under a choice of one of two
  *  licenses. You may choose to be licensed under the terms of the GNU Lesser
@@ -48,6 +48,7 @@
 #include "allocator/epoch_zone_heap.h"
 
 #include "common/common.h"
+#include "common/config.h"
 
 namespace nvmm {
 
@@ -102,6 +103,8 @@ inline uint64_t next_power_of_two(uint64_t n) {
     }
 }
 
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
 //
 // There is a bug in current LFS code, which does not mmap from right offset.
 // Bug: mmap from any offset incorrectly mmaps from boundaries of Book size
@@ -114,7 +117,7 @@ inline size_t header_size_round_up() {
 #ifdef LFSWORKAROUND
     return round_up(LFS_BOOK_SIZE, getpagesize());
 #else
-    return getpagesize();
+    return MAX(config.PageSize, getpagesize());
 #endif
 }
 

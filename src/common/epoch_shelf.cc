@@ -1,12 +1,13 @@
 /*
- *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021,2023 Hewlett Packard Enterprise Development
+ *  Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -41,6 +42,7 @@
 #include "nvmm/shelf_id.h" // for PoolId
 
 #include "common/common.h"
+#include "common/config.h"
 #include "common/epoch_shelf.h"
 
 #include "shelf_usage/epoch_manager_impl.h"
@@ -99,13 +101,14 @@ ErrorCode EpochShelf::Create()
         LOG(fatal) << "EpochShelf: Failed to create the epoch shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
-    int ret = ftruncate(fd, kShelfSize);
+    uint64_t length = round_up_with_zero_check(kShelfSize, config.PageSize);
+    int ret = ftruncate(fd, length);
     if (ret == -1)
     {
         LOG(fatal) << "EpochShelf: Failed to truncate the epoch shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
-    void *addr = mmap(NULL, kShelfSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    void *addr = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (addr == MAP_FAILED)
     {
         LOG(fatal) << "EpochShelf: Failed to mmap the epoch shelf file " << path_;
@@ -113,7 +116,7 @@ ErrorCode EpochShelf::Create()
     }
 
     //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr;
-    ret = fam_atomic_register_region(addr, kShelfSize, fd, 0);
+    ret = fam_atomic_register_region(addr, length, fd, 0);
     if (ret == -1)
     {
         LOG(fatal) << "EpochShelf: Failed to register fam atomic region " << path_;
@@ -134,9 +137,9 @@ ErrorCode EpochShelf::Create()
     fam_atomic_u64_write((uint64_t*)addr, kMagicNum);
 
     //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr;
-    fam_atomic_unregister_region(addr, kShelfSize);
+    fam_atomic_unregister_region(addr, length);
 
-    ret = munmap(addr, kShelfSize);
+    ret = munmap(addr, length);
     if (ret == -1)
     {
         LOG(fatal) << "EpochShelf: Failed to unmap the epoch shelf file " << path_;
@@ -206,7 +209,8 @@ ErrorCode EpochShelf::Open()
         return SHELF_FILE_OPEN_FAILED;
     }
 
-    addr_ = mmap(NULL, kShelfSize, PROT_READ|PROT_WRITE, MAP_SHARED, fd_, 0);
+    uint64_t length = round_up_with_zero_check(kShelfSize, config.PageSize);
+    addr_ = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (addr_ == MAP_FAILED)
     {
         LOG(fatal) << "EpochShelf: Failed to mmap the epoch shelf file " << path_;
@@ -214,7 +218,7 @@ ErrorCode EpochShelf::Open()
     }
 
     //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr_;
-    int ret = fam_atomic_register_region(addr_, (uint64_t)kShelfSize, fd_, 0);
+    int ret = fam_atomic_register_region(addr_, (uint64_t)length, fd_, 0);
     if (ret == -1)
     {
         LOG(fatal) << "EpochShelf: Failed to register fam atomic region " << path_;
@@ -240,9 +244,9 @@ ErrorCode EpochShelf::Close()
     }
 
     //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr_;
-    fam_atomic_unregister_region(addr_, kShelfSize);
-
-    int ret = munmap(addr_, kShelfSize);
+    uint64_t length = round_up_with_zero_check(kShelfSize, config.PageSize);
+    fam_atomic_unregister_region(addr_, length);
+    int ret = munmap(addr_, length);
     if (ret == -1)
     {
         LOG(fatal) << "EpochShelf: Failed to unmap the epoch shelf file " << path_;

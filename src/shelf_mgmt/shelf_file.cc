@@ -1,12 +1,13 @@
 /*
- *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
+ *  (c) Copyright 2016-2021,2023 Hewlett Packard Enterprise Development
+ *  Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -38,6 +39,7 @@
 #include "nvmm/shelf_id.h"
 
 #include "common/common.h"
+#include "common/config.h"
 #include "nvmm/fam.h"
 #include "nvmm/log.h"
 
@@ -50,7 +52,9 @@ namespace nvmm {
 int64_t ShelfManager::num_heap_instance = 0;
 
 ShelfFile::ShelfFile(std::string pathname)
-    : fd_{-1}, path_{pathname}, shelf_id_{} {}
+    : fd_{-1}, path_{pathname}, shelf_id_{} {
+    device_pagesize_ = config.PageSize;
+}
 
 ShelfFile::ShelfFile(std::string pathname, ShelfId shelf_id)
     : fd_{-1}, path_{pathname}, shelf_id_{shelf_id} {}
@@ -124,6 +128,7 @@ ErrorCode ShelfFile::Destroy() {
 ErrorCode ShelfFile::Truncate(off_t length) {
     TRACE();
     int ret;
+    length = round_up_with_zero_check(length, device_pagesize_);
     if (IsOpen() == false) {
         ret = truncate(path_.c_str(), length);
     } else {
@@ -216,6 +221,8 @@ ErrorCode ShelfFile::Map(void *addr_hint, size_t length, int prot, int flags,
         return SHELF_FILE_CLOSED;
     }
 
+    length = round_up_with_zero_check(length, config.PageSize);
+
     void *ret = mmap(addr_hint, length, prot, flags, fd_, offset);
     if (ret != MAP_FAILED) {
         *mapped_addr = ret;
@@ -247,6 +254,7 @@ ErrorCode ShelfFile::Unmap(void *mapped_addr, size_t length,
         // LOG(fatal) << "AFTER unregister fam atomic "  << length << " " <<
         // (uint64_t)mapped_addr;
     }
+    length = round_up_with_zero_check(length, config.PageSize);
     int ret = munmap(mapped_addr, length);
     if (ret != -1) {
         return NO_ERROR;
