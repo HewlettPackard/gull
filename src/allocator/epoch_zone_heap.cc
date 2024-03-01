@@ -1007,13 +1007,15 @@ ErrorCode EpochZoneHeap::OpenShelf(int shelf_num) {
     uint64_t headeroffset =
         fam_atomic_u64_read(&gh_->sz[shelf_num].headeroffset);
     uint64_t shelfsize = fam_atomic_u64_read(&gh_->sz[shelf_num].shelfsize);
-    // map the header for shelf 'shelf_num'
-    ErrorCode ret =
-        region_->Map(NULL, headersize, PROT_READ | PROT_WRITE, MAP_SHARED,
-                     headeroffset, (void **)&mapped_addr_[shelf_num]);
-    if (ret != NO_ERROR) {
+    // map the header for shelf 'shelf_num' if not mapped
+    ErrorCode ret;
+    if (mapped_addr_[shelf_num] == NULL) {
+      ret = region_->Map(NULL, headersize, PROT_READ | PROT_WRITE, MAP_SHARED,
+                         headeroffset, (void **)&mapped_addr_[shelf_num]);
+      if (ret != NO_ERROR) {
         LOG(error) << "Zone: region map failed " << (uint64_t)pool_id_;
         return HEAP_OPEN_FAILED;
+      }
     }
     size_t gh_size = 0;
     if (shelf_num == 0)
