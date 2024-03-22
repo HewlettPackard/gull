@@ -23,14 +23,11 @@
  *
  */
 
-#include <stdlib.h>
-#include <stdint.h>
-#include <stddef.h>
+#include <cstdlib>
+#include <cstddef>
 #include <fcntl.h> // for O_RDWR
 #include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 #include <pthread.h>
-#include <assert.h>
-#include <errno.h>
 #include <unistd.h>
 
 #include <sys/mman.h>
