@@ -26,11 +26,29 @@
 #ifndef _NVMM_TEST_H_
 #define _NVMM_TEST_H_
 
+#include <gtest/gtest.h>
 #include "nvmm/log.h"
 
 namespace nvmm {
 
-void InitTest(boost::log::trivial::severity_level level=boost::log::trivial::severity_level::fatal, bool to_console = false);
+class Environment : public ::testing::Environment {
+ public:
+  Environment(boost::log::trivial::severity_level level = boost::log::trivial::severity_level::fatal, bool to_console = false)
+  {
+    level_ = level;
+    to_console_ = to_console;
+  }
+  ~Environment() override {}
+
+  // Override this to define how to set up the environment.
+  void SetUp() override;
+
+  // Override this to define how to tear down the environment.
+  void TearDown() override {}
+private:
+  boost::log::trivial::severity_level level_;
+  bool to_console_;
+};
 
 } // namespace nvmm
     

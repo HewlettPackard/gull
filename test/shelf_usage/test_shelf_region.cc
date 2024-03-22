@@ -144,8 +144,8 @@ TEST(ShelfRegion, MapUnmap)
 
 int main(int argc, char** argv)
 {
-    InitTest();    
     ::testing::InitGoogleTest(&argc, argv);
+    ::testing::AddGlobalTestEnvironment(new Environment);
     return RUN_ALL_TESTS();
 }
 

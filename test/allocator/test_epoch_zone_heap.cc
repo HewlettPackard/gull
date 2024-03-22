@@ -1295,7 +1295,7 @@ TEST(EpochZoneHeap, NoDelayedFree) {
 }
 
 int main(int argc, char **argv) {
-    InitTest(nvmm::trace, false);
     ::testing::InitGoogleTest(&argc, argv);
+    ::testing::AddGlobalTestEnvironment(new Environment(nvmm::trace, false));
     return RUN_ALL_TESTS();
 }

@@ -23,14 +23,11 @@
  *
  */
 
-#include <iostream>
-#include <string>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <errno.h>
 
 #include "nvmm/nvmm_fam_atomic.h"
 #include "nvmm/log.h"
@@ -45,19 +42,19 @@ namespace nvmm {
 
 // TODO: move this to nvmm level
 // NOTE: this function must be run once and only once for every test
-void InitTest(boost::log::trivial::severity_level level, bool to_console)
+void Environment::SetUp()
 {
 #ifdef LFSWORKAROUND
     sleep(10);
 #endif
     // init boost::log
-    if (to_console == true)
+    if (to_console_ == true)
     {
-        nvmm::init_log(level, "");
+        nvmm::init_log(level_, "");
     }
     else
     {
-        nvmm::init_log(level, "mm.log");
+        nvmm::init_log(level_, "mm.log");
     }
 
     ResetNVMM();

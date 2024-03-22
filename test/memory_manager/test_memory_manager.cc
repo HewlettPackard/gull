@@ -723,7 +723,7 @@ TEST(MemoryManager, MultiProcessHeap)
 
 int main(int argc, char** argv)
 {
-    InitTest(nvmm::fatal, true);
     ::testing::InitGoogleTest(&argc, argv);
+    ::testing::AddGlobalTestEnvironment(new Environment(nvmm::fatal, true));
     return RUN_ALL_TESTS();
 }
