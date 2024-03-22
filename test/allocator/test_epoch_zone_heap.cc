@@ -947,7 +947,7 @@ TEST(EpochZoneHeap, Permissions) {
 
     // create a heap
     EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
-    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size, 128, S_IRUSR | S_IWUSR | S_IRGRP ));
+    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size, 128, 0, S_IRUSR | S_IWUSR | S_IRGRP));
     EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
 
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
