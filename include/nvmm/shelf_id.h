@@ -27,6 +27,7 @@
 #define _NVMM_SHELF_ID_H_
 
 #include <iostream>
+#include <cstdint>
 #include <assert.h> // assert and static_assert
 #include <functional> // std::hash
 

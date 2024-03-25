@@ -26,6 +26,7 @@
 #ifndef _NVMM_GLOBAL_PTR_H_
 #define _NVMM_GLOBAL_PTR_H_
 
+#include <cstdint>
 #include <assert.h>
 #include "nvmm/shelf_id.h"
 
