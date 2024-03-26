@@ -36,7 +36,7 @@ BuildRequires:  libpmem-devel
 BuildRequires:  yaml-cpp-devel
 
 %description
-Multi-node fabric-attached memory manager that provides simple abstractions for accessing and allocating NVM from fabric-attached memory 
+Multi-node fabric-attached memory manager that provides simple abstractions for accessing and allocating NVM from fabric-attached memory
 
 %package        devel
 Summary:        Development files for %{name}
