@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -31,15 +31,14 @@
 
 using namespace nvmm;
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     init_log(boost::log::trivial::severity_level::fatal);
 
     MemoryManager *mm = MemoryManager::GetInstance();
 
     // create a new 128MB NVM region with pool id 1
     PoolId pool_id = 1;
-    size_t size = 128*1024*1024; // 128MB
+    size_t size = 128 * 1024 * 1024; // 128MB
     ErrorCode ret = mm->CreateRegion(pool_id, size);
     assert(ret == NO_ERROR);
 
@@ -51,8 +50,9 @@ int main(int argc, char **argv)
     // open and map the region
     ret = region->Open(O_RDWR);
     assert(ret == NO_ERROR);
-    int64_t* address = NULL;
-    ret = region->Map(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address);
+    int64_t *address = NULL;
+    ret = region->Map(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, 0,
+                      (void **)&address);
     assert(ret == NO_ERROR);
 
     // use the region

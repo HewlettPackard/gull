@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -24,40 +24,38 @@
  */
 
 #include <fcntl.h> // for O_RDWR
-#include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 #include <pthread.h>
 #include <random>
+#include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 
-#include <gtest/gtest.h>
 #include "nvmm/nvmm_fam_atomic.h"
+#include <gtest/gtest.h>
 
-#include "nvmm/memory_manager.h"
 #include "nvmm/epoch_manager.h"
+#include "nvmm/memory_manager.h"
 #include "shelf_mgmt/pool.h"
-#include "test_common/test.h"
 #include "shelf_usage/freelists.h"
+#include "test_common/test.h"
 
 using namespace nvmm;
 ShelfName shelf_name;
 
 std::random_device r;
 std::default_random_engine e1(r());
-uint32_t rand_uint32(uint32_t min, uint32_t max)
-{
+uint32_t rand_uint32(uint32_t min, uint32_t max) {
     std::uniform_int_distribution<uint32_t> uniform_dist(min, max);
     return uniform_dist(e1);
 }
 
 // single-threaded
-TEST(MemoryManager, Region)
-{
+TEST(MemoryManager, Region) {
     PoolId pool_id = 1;
-    size_t size = 128*1024*1024LLU; // 128 MB
-    int64_t* address = NULL;
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
+    int64_t *address = NULL;
 
     MemoryManager *mm = MemoryManager::GetInstance();
     Region *region = NULL;
-    
+
     // create a region
     EXPECT_EQ(ID_NOT_FOUND, mm->FindRegion(pool_id, &region));
     EXPECT_EQ(NO_ERROR, mm->CreateRegion(pool_id, size));
@@ -65,29 +63,30 @@ TEST(MemoryManager, Region)
 
     // get the existing region
     EXPECT_EQ(NO_ERROR, mm->FindRegion(pool_id, &region));
-    
+
     // write a value
     EXPECT_EQ(NO_ERROR, region->Open(O_RDWR));
-    EXPECT_EQ(NO_ERROR, region->Map(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address));
+    EXPECT_EQ(NO_ERROR, region->Map(NULL, size, PROT_READ | PROT_WRITE,
+                                    MAP_SHARED, 0, (void **)&address));
     fam_atomic_64_write(address, 123LL);
     // TODO: the buggy line....
     EXPECT_EQ(NO_ERROR, region->Unmap(address, size));
-    EXPECT_EQ(NO_ERROR, region->Close());        
+    EXPECT_EQ(NO_ERROR, region->Close());
 
     delete region;
 
+    // sleep(3);
 
-    //sleep(3);
-    
     // get the existing region
     EXPECT_EQ(NO_ERROR, mm->FindRegion(pool_id, &region));
 
     // read it back
     EXPECT_EQ(NO_ERROR, region->Open(O_RDWR));
-    EXPECT_EQ(NO_ERROR, region->Map(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address));
+    EXPECT_EQ(NO_ERROR, region->Map(NULL, size, PROT_READ | PROT_WRITE,
+                                    MAP_SHARED, 0, (void **)&address));
     EXPECT_EQ(123LL, fam_atomic_64_read(address));
     EXPECT_EQ(NO_ERROR, region->Unmap(address, size));
-    EXPECT_EQ(NO_ERROR, region->Close());        
+    EXPECT_EQ(NO_ERROR, region->Close());
 
     delete region;
 
@@ -96,14 +95,13 @@ TEST(MemoryManager, Region)
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyRegion(pool_id));
 }
 
-TEST(MemoryManager, Heap)
-{
+TEST(MemoryManager, Heap) {
     PoolId pool_id = 1;
-    size_t size = 128*1024*1024LLU; // 128 MB
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
 
     MemoryManager *mm = MemoryManager::GetInstance();
     Heap *heap = NULL;
-    
+
     // create a heap
     EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
     EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
@@ -111,19 +109,19 @@ TEST(MemoryManager, Heap)
 
     // get the existing heap
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
-    
+
     // write a value
     EXPECT_EQ(NO_ERROR, heap->Open());
-    EXPECT_EQ(NO_ERROR, heap->Close());        
+    EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // get the existing heap
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
 
     // // read it back
     EXPECT_EQ(NO_ERROR, heap->Open());
-    EXPECT_EQ(NO_ERROR, heap->Close());        
+    EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
 
@@ -133,15 +131,14 @@ TEST(MemoryManager, Heap)
 }
 
 // TODO
-TEST(MemoryManager, HeapWithMapUnmapPointer)
-{
+TEST(MemoryManager, HeapWithMapUnmapPointer) {
     PoolId pool_id = 1;
-    size_t size = 128*1024*1024LLU; // 128 MB
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
     GlobalPtr ptr[10];
 
     MemoryManager *mm = MemoryManager::GetInstance();
     Heap *heap = NULL;
-    
+
     // create a heap
     EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
     EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
@@ -149,109 +146,54 @@ TEST(MemoryManager, HeapWithMapUnmapPointer)
 
     // get the existing heap
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
-    
+
     EXPECT_EQ(NO_ERROR, heap->Open());
-    for (int i=0; i<10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         ptr[i] = heap->Alloc(sizeof(int));
         EXPECT_TRUE(ptr[i].IsValid());
         int *int_ptr = NULL;
+        EXPECT_EQ(NO_ERROR, mm->MapPointer(ptr[i], sizeof(int), NULL,
+                                           PROT_READ | PROT_WRITE, MAP_SHARED,
+                                           (void **)&int_ptr));
+        *int_ptr = i;
         EXPECT_EQ(NO_ERROR,
-                  mm->MapPointer(ptr[i], sizeof(int), NULL, PROT_READ|PROT_WRITE, MAP_SHARED,
-                                            (void **)&int_ptr)
-                  );
-        *int_ptr = i;            
-        EXPECT_EQ(NO_ERROR, mm->UnmapPointer(ptr[i],(void *)int_ptr, sizeof(int)));
+                  mm->UnmapPointer(ptr[i], (void *)int_ptr, sizeof(int)));
     }
-    EXPECT_EQ(NO_ERROR, heap->Close());        
+    EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // get the existing heap
-    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));    
-    EXPECT_EQ(NO_ERROR, heap->Open());    
-    for (int i=0; i<10; i++)
-    {
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    for (int i = 0; i < 10; i++) {
         int *int_ptr = NULL;
+        EXPECT_EQ(NO_ERROR, mm->MapPointer(ptr[i], sizeof(int), NULL,
+                                           PROT_READ | PROT_WRITE, MAP_SHARED,
+                                           (void **)&int_ptr));
+        EXPECT_EQ(i, *int_ptr);
         EXPECT_EQ(NO_ERROR,
-                  mm->MapPointer(ptr[i], sizeof(int), NULL, PROT_READ|PROT_WRITE, MAP_SHARED,
-                                            (void **)&int_ptr)
-                  );
-        EXPECT_EQ(i, *int_ptr);        
-        EXPECT_EQ(NO_ERROR, mm->UnmapPointer(ptr[i], (void *)int_ptr, sizeof(int)));
+                  mm->UnmapPointer(ptr[i], (void *)int_ptr, sizeof(int)));
         heap->Free(ptr[i]);
     }
-    EXPECT_EQ(NO_ERROR, heap->Close());        
-
-    delete heap;
-    
-    // destroy a heap
-    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));    
-    EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
-}
-
-
-// TODO
-TEST(MemoryManager, HeapWithMapUnmapReadWrite)
-{
-    PoolId pool_id = 1;
-    size_t size = 128*1024*1024LLU; // 128 MB
-    GlobalPtr ptr;
-
-    MemoryManager *mm = MemoryManager::GetInstance();
-    Heap *heap = NULL;
-    
-    // create a heap
-    EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
-    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
-    EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
-
-    // get the existing heap
-    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
-    
-    EXPECT_EQ(NO_ERROR, heap->Open());
-    ptr = heap->Alloc(sizeof(int));
-    EXPECT_TRUE(ptr.IsValid());
-    Offset offset = ptr.GetOffset();
-    int *int_ptr = NULL;
-    EXPECT_EQ(NO_ERROR,
-                  heap->Map(offset, sizeof(int), NULL, PROT_READ|PROT_WRITE,
-                                            (void **)&int_ptr));
-    *int_ptr = 10;
-    EXPECT_EQ(NO_ERROR, heap->Unmap(offset,(void *)int_ptr, sizeof(int)));
     EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
-    // get the existing heap
-    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
-    EXPECT_EQ(NO_ERROR, heap->Open());
-    EXPECT_EQ(NO_ERROR,
-              heap->Map(offset, sizeof(int), NULL, PROT_READ|PROT_WRITE,
-                                        (void **)&int_ptr));
-    std::cout << " After successful write of 10, Value :" << *int_ptr << std::endl;
-    EXPECT_EQ(10, *int_ptr);
-    EXPECT_EQ(NO_ERROR, heap->Unmap(offset, (void *)int_ptr, sizeof(int)));
-    heap->Free(ptr);
-    EXPECT_EQ(NO_ERROR, heap->Close());
 
-    delete heap;
-    
     // destroy a heap
     EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 }
 
 // TODO
-TEST(MemoryManagerDeathTest, HeapWithMapUnmapReadOnly)
-{
+TEST(MemoryManager, HeapWithMapUnmapReadWrite) {
     PoolId pool_id = 1;
-    size_t size = 128*1024*1024LLU; // 128 MB
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
     GlobalPtr ptr;
 
     MemoryManager *mm = MemoryManager::GetInstance();
     Heap *heap = NULL;
-    
+
     // create a heap
     EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
     EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
@@ -259,27 +201,74 @@ TEST(MemoryManagerDeathTest, HeapWithMapUnmapReadOnly)
 
     // get the existing heap
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
-    
+
     EXPECT_EQ(NO_ERROR, heap->Open());
     ptr = heap->Alloc(sizeof(int));
     EXPECT_TRUE(ptr.IsValid());
     Offset offset = ptr.GetOffset();
     int *int_ptr = NULL;
-    EXPECT_EQ(NO_ERROR,
-              heap->Map(offset, sizeof(int), NULL, PROT_READ,
-                                        (void **)&int_ptr));
-    EXPECT_DEATH((*int_ptr = 10), "");
-    EXPECT_EQ(NO_ERROR, heap->Unmap(offset,(void *)int_ptr, sizeof(int)));
+    EXPECT_EQ(NO_ERROR, heap->Map(offset, sizeof(int), NULL,
+                                  PROT_READ | PROT_WRITE, (void **)&int_ptr));
+    *int_ptr = 10;
+    EXPECT_EQ(NO_ERROR, heap->Unmap(offset, (void *)int_ptr, sizeof(int)));
     EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // get the existing heap
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
     EXPECT_EQ(NO_ERROR, heap->Open());
-    EXPECT_EQ(NO_ERROR,
-              heap->Map(offset, sizeof(int), NULL, PROT_READ,
-                                            (void **)&int_ptr));
+    EXPECT_EQ(NO_ERROR, heap->Map(offset, sizeof(int), NULL,
+                                  PROT_READ | PROT_WRITE, (void **)&int_ptr));
+    std::cout << " After successful write of 10, Value :" << *int_ptr
+              << std::endl;
+    EXPECT_EQ(10, *int_ptr);
+    EXPECT_EQ(NO_ERROR, heap->Unmap(offset, (void *)int_ptr, sizeof(int)));
+    heap->Free(ptr);
+    EXPECT_EQ(NO_ERROR, heap->Close());
+
+    delete heap;
+
+    // destroy a heap
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
+    EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
+}
+
+// TODO
+TEST(MemoryManagerDeathTest, HeapWithMapUnmapReadOnly) {
+    PoolId pool_id = 1;
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
+    GlobalPtr ptr;
+
+    MemoryManager *mm = MemoryManager::GetInstance();
+    Heap *heap = NULL;
+
+    // create a heap
+    EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
+    EXPECT_EQ(ID_FOUND, mm->CreateHeap(pool_id, size));
+
+    // get the existing heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    ptr = heap->Alloc(sizeof(int));
+    EXPECT_TRUE(ptr.IsValid());
+    Offset offset = ptr.GetOffset();
+    int *int_ptr = NULL;
+    EXPECT_EQ(NO_ERROR, heap->Map(offset, sizeof(int), NULL, PROT_READ,
+                                  (void **)&int_ptr));
+    EXPECT_DEATH((*int_ptr = 10), "");
+    EXPECT_EQ(NO_ERROR, heap->Unmap(offset, (void *)int_ptr, sizeof(int)));
+    EXPECT_EQ(NO_ERROR, heap->Close());
+
+    delete heap;
+
+    // get the existing heap
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    EXPECT_EQ(NO_ERROR, heap->Map(offset, sizeof(int), NULL, PROT_READ,
+                                  (void **)&int_ptr));
     std::cout << "Value :" << *int_ptr << std::endl;
     EXPECT_EQ(0, *int_ptr);
     EXPECT_EQ(NO_ERROR, heap->Unmap(offset, (void *)int_ptr, sizeof(int)));
@@ -287,22 +276,21 @@ TEST(MemoryManagerDeathTest, HeapWithMapUnmapReadOnly)
     EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // destroy a heap
     EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 }
 
 // TODO
-TEST(MemoryManager, HeapWithGlobalLocalPtr)
-{
+TEST(MemoryManager, HeapWithGlobalLocalPtr) {
     PoolId pool_id = 1;
-    size_t size = 128*1024*1024LLU; // 128 MB
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
     GlobalPtr ptr[10];
 
     MemoryManager *mm = MemoryManager::GetInstance();
     Heap *heap = NULL;
-    
+
     // create a heap
     EXPECT_EQ(ID_NOT_FOUND, mm->FindHeap(pool_id, &heap));
     EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
@@ -310,98 +298,93 @@ TEST(MemoryManager, HeapWithGlobalLocalPtr)
 
     // get the existing heap
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
-    
+
     EXPECT_EQ(NO_ERROR, heap->Open());
-    for (int i=0; i<10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         ptr[i] = heap->Alloc(sizeof(int));
         EXPECT_TRUE(ptr[i].IsValid());
-        int *int_ptr = (int*)mm->GlobalToLocal(ptr[i]);
+        int *int_ptr = (int *)mm->GlobalToLocal(ptr[i]);
         EXPECT_EQ(ptr[i], mm->LocalToGlobal(int_ptr));
         EXPECT_TRUE(int_ptr != NULL);
-        *int_ptr = i;            
+        *int_ptr = i;
     }
-    EXPECT_EQ(NO_ERROR, heap->Close());        
+    EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // get the existing heap
-    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));    
-    EXPECT_EQ(NO_ERROR, heap->Open());    
-    for (int i=0; i<10; i++)
-    {
-        int *int_ptr = (int*)mm->GlobalToLocal(ptr[i]);
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    for (int i = 0; i < 10; i++) {
+        int *int_ptr = (int *)mm->GlobalToLocal(ptr[i]);
         EXPECT_EQ(ptr[i], mm->LocalToGlobal(int_ptr));
         EXPECT_TRUE(int_ptr != NULL);
-        EXPECT_EQ(i, *int_ptr);        
+        EXPECT_EQ(i, *int_ptr);
         heap->Free(ptr[i]);
     }
-    EXPECT_EQ(NO_ERROR, heap->Close());        
+    EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // destroy a heap
-    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));    
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 }
 
 #ifndef LFSWORKAROUND
-TEST(MemoryManager, HeapHugeObjects)
-{
+TEST(MemoryManager, HeapHugeObjects) {
     PoolId pool_id = 1;
-    size_t size = 128*1024*1024LLU; // 128 MB
-    size_t obj_size = size/128; // 1MB
+    size_t size = 128 * 1024 * 1024LLU; // 128 MB
+    size_t obj_size = size / 128;       // 1MB
     char *buf = new char[obj_size];
     assert(buf != NULL);
     GlobalPtr ptr[10];
 
     MemoryManager *mm = MemoryManager::GetInstance();
     Heap *heap = NULL;
-    
+
     // create a heap
     EXPECT_EQ(NO_ERROR, mm->CreateHeap(pool_id, size));
     // get the existing heap
     EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
-    
+
     EXPECT_EQ(NO_ERROR, heap->Open());
-    for (int i=0; i<3; i++)
-    {
+    for (int i = 0; i < 3; i++) {
         ptr[i] = heap->Alloc(obj_size);
         EXPECT_TRUE(ptr[i].IsValid());
         char *char_ptr = NULL;
         EXPECT_EQ(NO_ERROR,
-                  mm->MapPointer(ptr[i], obj_size, NULL, PROT_READ|PROT_WRITE, MAP_SHARED,
-                                            (void **)&char_ptr)
-                  );        
+                  mm->MapPointer(ptr[i], obj_size, NULL, PROT_READ | PROT_WRITE,
+                                 MAP_SHARED, (void **)&char_ptr));
         memset(buf, i, obj_size);
         memcpy(char_ptr, buf, obj_size);
-        EXPECT_EQ(NO_ERROR, mm->UnmapPointer(ptr[i],(void *)char_ptr, sizeof(int)));
+        EXPECT_EQ(NO_ERROR,
+                  mm->UnmapPointer(ptr[i], (void *)char_ptr, sizeof(int)));
     }
-    EXPECT_EQ(NO_ERROR, heap->Close());        
+    EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // get the existing heap
-    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));    
-    EXPECT_EQ(NO_ERROR, heap->Open());    
-    for (int i=0; i<3; i++)
-    {
+    EXPECT_EQ(NO_ERROR, mm->FindHeap(pool_id, &heap));
+    EXPECT_EQ(NO_ERROR, heap->Open());
+    for (int i = 0; i < 3; i++) {
         char *char_ptr = NULL;
         EXPECT_EQ(NO_ERROR,
-                  mm->MapPointer(ptr[i], obj_size, NULL, PROT_READ|PROT_WRITE, MAP_SHARED,
-                                            (void **)&char_ptr)
-                  );
+                  mm->MapPointer(ptr[i], obj_size, NULL, PROT_READ | PROT_WRITE,
+                                 MAP_SHARED, (void **)&char_ptr));
         memset(buf, i, obj_size);
         EXPECT_EQ(0, memcmp(buf, char_ptr, obj_size));
-        EXPECT_EQ(NO_ERROR, mm->UnmapPointer(ptr[i], (void *)char_ptr, sizeof(int)));
+        EXPECT_EQ(NO_ERROR,
+                  mm->UnmapPointer(ptr[i], (void *)char_ptr, sizeof(int)));
         heap->Free(ptr[i]);
     }
-    EXPECT_EQ(NO_ERROR, heap->Close());        
+    EXPECT_EQ(NO_ERROR, heap->Close());
 
     delete heap;
-    
+
     // destroy a heap
-    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));    
+    EXPECT_EQ(NO_ERROR, mm->DestroyHeap(pool_id));
     EXPECT_EQ(ID_NOT_FOUND, mm->DestroyHeap(pool_id));
 
     delete buf;
@@ -410,28 +393,26 @@ TEST(MemoryManager, HeapHugeObjects)
 #ifndef LFSWORKAROUND
 // multi-threaded
 #ifndef ALPS
-struct thread_argument{
-    int  id;
+struct thread_argument {
+    int id;
     int count;
 };
 
-void *worker(void *thread_arg)
-{
+void *worker(void *thread_arg) {
     ErrorCode ret = NO_ERROR;
-    thread_argument *arg = (thread_argument*)thread_arg;
+    thread_argument *arg = (thread_argument *)thread_arg;
     int count = arg->count;
-    assert(count != 0);    
+    assert(count != 0);
     MemoryManager *mm = MemoryManager::GetInstance();
-    size_t size = 32*1024*1024LLU; // 8MB
-    for (int i=0; i<count; i++)
-    {
-        PoolId pool_id = (PoolId)rand_uint32(1, Pool::kMaxPoolCount-1); // 0 is reserved
+    size_t size = 32 * 1024 * 1024LLU; // 8MB
+    for (int i = 0; i < count; i++) {
+        PoolId pool_id =
+            (PoolId)rand_uint32(1, Pool::kMaxPoolCount - 1); // 0 is reserved
         Region *region = NULL;
         Heap *heap = NULL;
 
-        //ShelfIndex shelf_idx = 0;
-        switch (rand_uint32(0,5))
-        {
+        // ShelfIndex shelf_idx = 0;
+        switch (rand_uint32(0, 5)) {
         case 0:
             mm->CreateRegion(pool_id, size);
             break;
@@ -459,38 +440,34 @@ void *worker(void *thread_arg)
             break;
         }
     }
-    pthread_exit(NULL);    
+    pthread_exit(NULL);
 }
 
-TEST(MemoryManager, MultiThreadStressTest)
-{
+TEST(MemoryManager, MultiThreadStressTest) {
     int const kNumThreads = 5;
     int const kNumTry = 10;
-    
+
     pthread_t threads[kNumThreads];
     thread_argument args[kNumThreads];
-    int ret=0;
-    
-    for(int i=0; i<kNumThreads; i++)
-    {
+    int ret = 0;
+
+    for (int i = 0; i < kNumThreads; i++) {
         args[i].id = i;
         args[i].count = kNumTry;
-        ret = pthread_create(&threads[i], NULL, worker, (void*)&args[i]);
+        ret = pthread_create(&threads[i], NULL, worker, (void *)&args[i]);
         ASSERT_EQ(0, ret);
     }
 
     void *status;
-    for(int i=0; i<kNumThreads; i++)
-    {
-        //std::cout << "Join worker " << i << std::endl;
+    for (int i = 0; i < kNumThreads; i++) {
+        // std::cout << "Join worker " << i << std::endl;
         ret = pthread_join(threads[i], &status);
         ASSERT_EQ(0, ret);
     }
 
-    // delete all created pools    
+    // delete all created pools
     MemoryManager *mm = MemoryManager::GetInstance();
-    for (PoolId pool_id = 1; pool_id < Pool::kMaxPoolCount; pool_id++)
-    {
+    for (PoolId pool_id = 1; pool_id < Pool::kMaxPoolCount; pool_id++) {
         (void)mm->DestroyHeap(pool_id);
         (void)mm->DestroyRegion(pool_id);
     }
@@ -499,38 +476,34 @@ TEST(MemoryManager, MultiThreadStressTest)
 #endif // LFSWORKAROUND
 
 // multi-process
-void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
-{
+void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id) {
     std::cout << "START" << std::endl;
     // open the comm
     std::string path = shelf_name.Path(comm_shelf_id);
     ShelfFile shelf(path);
     void *address = NULL;
     EXPECT_EQ(NO_ERROR, shelf.Open(O_RDWR));
-    size_t length = shelf.Size();    
-    EXPECT_EQ(NO_ERROR, shelf.Map(NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address));
+    size_t length = shelf.Size();
+    EXPECT_EQ(NO_ERROR, shelf.Map(NULL, length, PROT_READ | PROT_WRITE,
+                                  MAP_SHARED, 0, (void **)&address));
     FreeLists comm(address, length);
-    EXPECT_EQ(NO_ERROR, comm.Open());    
+    EXPECT_EQ(NO_ERROR, comm.Open());
 
-
-    
-    // =======================================================================    
+    // =======================================================================
     // get the existing heap
     MemoryManager *mm = MemoryManager::GetInstance();
     Heap *heap = NULL;
     EXPECT_EQ(NO_ERROR, mm->FindHeap(heap_pool_id, &heap));
     EXPECT_TRUE(heap != NULL);
-    
+
     EXPECT_EQ(NO_ERROR, heap->Open());
 
     int count = 500;
-    size_t alloc_unit = 128*1024; // 128KB
+    size_t alloc_unit = 128 * 1024; // 128KB
     GlobalPtr ptr;
-    for (int i=0; i<count; i++)
-    {
-        if (comm.GetPointer(0, ptr) == NO_ERROR)
-        {
-            uint64_t *uint_ptr = (uint64_t*)mm->GlobalToLocal(ptr);
+    for (int i = 0; i < count; i++) {
+        if (comm.GetPointer(0, ptr) == NO_ERROR) {
+            uint64_t *uint_ptr = (uint64_t *)mm->GlobalToLocal(ptr);
             EXPECT_EQ(ptr, mm->LocalToGlobal(uint_ptr));
             EXPECT_TRUE(uint_ptr != NULL);
             EXPECT_EQ(ptr.ToUINT64(), *uint_ptr);
@@ -538,25 +511,22 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
         }
 
         ptr = heap->Alloc(alloc_unit);
-        if (ptr.IsValid() == false)
-        {
+        if (ptr.IsValid() == false) {
             std::cout << "Alloc failed" << std::endl;
-        }
-        else
-        {
-            //std::cout << "Alloc succeeded" << std::endl;
-            uint64_t *uint_ptr = (uint64_t*)mm->GlobalToLocal(ptr);
+        } else {
+            // std::cout << "Alloc succeeded" << std::endl;
+            uint64_t *uint_ptr = (uint64_t *)mm->GlobalToLocal(ptr);
             EXPECT_EQ(ptr, mm->LocalToGlobal(uint_ptr));
             EXPECT_TRUE(uint_ptr != NULL);
             *uint_ptr = ptr.ToUINT64();
             EXPECT_EQ(NO_ERROR, comm.PutPointer(0, ptr));
-        }        
+        }
     }
 
     EXPECT_EQ(NO_ERROR, heap->Close());
     delete heap;
     // =======================================================================
-    
+
     // close the comm
     EXPECT_EQ(NO_ERROR, comm.Close());
     EXPECT_EQ(NO_ERROR, shelf.Unmap(address, length));
@@ -566,22 +536,22 @@ void LocalAllocRemoteFree(PoolId heap_pool_id, ShelfId comm_shelf_id)
 }
 
 #ifndef LFSWORKAROUND
-TEST(MemoryManager, MultiProcessHeap)
-{
+TEST(MemoryManager, MultiProcessHeap) {
     int const process_count = 16;
 
     // create a shelf for communication among processes
     // use the FreeLists
-    // TODO: make it a shelf_usage class?    
-    ShelfId const comm_shelf_id(15,1);
+    // TODO: make it a shelf_usage class?
+    ShelfId const comm_shelf_id(15, 1);
     std::string path = shelf_name.Path(comm_shelf_id);
     ShelfFile shelf(path);
-    size_t length = 128*1024*1024LLU; 
+    size_t length = 128 * 1024 * 1024LLU;
     size_t list_count = 1;
-    void* address = NULL;    
-    EXPECT_EQ(NO_ERROR, shelf.Create(S_IRUSR|S_IWUSR, length));
+    void *address = NULL;
+    EXPECT_EQ(NO_ERROR, shelf.Create(S_IRUSR | S_IWUSR, length));
     EXPECT_EQ(NO_ERROR, shelf.Open(O_RDWR));
-    EXPECT_EQ(NO_ERROR, shelf.Map(NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address));
+    EXPECT_EQ(NO_ERROR, shelf.Map(NULL, length, PROT_READ | PROT_WRITE,
+                                  MAP_SHARED, 0, (void **)&address));
 
     FreeLists comm(address, length);
     EXPECT_EQ(NO_ERROR, comm.Create(list_count));
@@ -590,36 +560,30 @@ TEST(MemoryManager, MultiProcessHeap)
     // create the DistHeap
     MemoryManager *mm = MemoryManager::GetInstance();
     PoolId heap_pool_id = 1; // the pool id of the DistHeap
-    size_t size = 128*1024*1024LLU;   
+    size_t size = 128 * 1024 * 1024LLU;
     EXPECT_EQ(NO_ERROR, mm->CreateHeap(heap_pool_id, size));
-
 
     // =======================================================================
     // reset epoch manager before fork()
     EpochManager *em = EpochManager::GetInstance();
     pid_t pid[process_count];
 
-    for (int i=0; i< process_count; i++)
-    {
+    for (int i = 0; i < process_count; i++) {
         em->Stop();
         pid[i] = fork();
         em->Start();
         ASSERT_LE(0, pid[i]);
-        if (pid[i]==0)
-        {
+        if (pid[i] == 0) {
             // child
             LocalAllocRemoteFree(heap_pool_id, comm_shelf_id);
             exit(0); // this will leak memory (see valgrind output)
-        }
-        else
-        {
+        } else {
             // parent
             continue;
         }
     }
 
-    for (int i=0; i< process_count; i++)
-    {    
+    for (int i = 0; i < process_count; i++) {
         int status;
         waitpid(pid[i], &status, 0);
     }
@@ -627,7 +591,6 @@ TEST(MemoryManager, MultiProcessHeap)
     // =======================================================================
     // destroy the heap
     EXPECT_EQ(NO_ERROR, mm->DestroyHeap(heap_pool_id));
-
 
     // =======================================================================
     // destroy the shelf for communication
@@ -637,7 +600,8 @@ TEST(MemoryManager, MultiProcessHeap)
     EXPECT_EQ(NO_ERROR, shelf.Destroy());
 }
 #endif
-// TODO: there seems to be a bug in libfam-atomic that may cause this test case to fail
+// TODO: there seems to be a bug in libfam-atomic that may cause this test case
+// to fail
 
 // void stress(int count)
 // {
@@ -647,9 +611,8 @@ TEST(MemoryManager, MultiProcessHeap)
 //     size_t size = 8*1024*1024LLU; // 8MB
 //     for (int i=0; i<count; i++)
 //     {
-//         PoolId pool_id = (PoolId)rand_uint32(1, Pool::kMaxPoolCount-1); // 0 is reserved
-//         Region *region = NULL;
-//         Heap *heap = NULL;
+//         PoolId pool_id = (PoolId)rand_uint32(1, Pool::kMaxPoolCount-1); // 0
+//         is reserved Region *region = NULL; Heap *heap = NULL;
 
 //         //ShelfIndex shelf_idx = 0;
 //         switch (rand_uint32(0,5))
@@ -721,8 +684,7 @@ TEST(MemoryManager, MultiProcessHeap)
 //     }
 // }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     ::testing::AddGlobalTestEnvironment(new Environment(nvmm::fatal, true));
     return RUN_ALL_TESTS();

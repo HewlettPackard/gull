@@ -13,9 +13,9 @@
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ *AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ *IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
  * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
  * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
@@ -26,12 +26,11 @@
  ******************************************************************************
  */
 
-/* 
+/*
  * Scalable reader/writer lock implementation taken from here:
  *
  * https://github.com/pramalhe/ConcurrencyFreaks/blob/master/CPP/locks/DCLCRWLock.cpp
  */
-
 
 #include "shelf_usage/dclcrwlock.h"
 
@@ -39,39 +38,33 @@
 #include <iostream>
 #include <thread>
 
-
-
 namespace nvmm {
 namespace internal {
-
-
 
 /**
  * Default constructor
  *
  */
-DCLCRWLock::DCLCRWLock ()
-{
+DCLCRWLock::DCLCRWLock() {
     int hw_cores = std::thread::hardware_concurrency();
     // Default number of cores assumes this machine has 8 cores
-    if (hw_cores == 0) hw_cores = DCLC_NUMBER_OF_CORES;
+    if (hw_cores == 0)
+        hw_cores = DCLC_NUMBER_OF_CORES;
     numCores = hw_cores;
-    countersLength = numCores*DCLC_COUNTERS_RATIO;
+    countersLength = numCores * DCLC_COUNTERS_RATIO;
     writersMutex.store(DCLC_RWL_UNLOCKED);
     readersCounters = new std::atomic<int>[countersLength];
     for (int idx = 0; idx < countersLength; idx += DCLC_COUNTERS_RATIO) {
         readersCounters[idx] = 0;
     }
 }
-
 
 /**
  * With this constructor the use can specify the number of cores on the system
  */
-DCLCRWLock::DCLCRWLock (int num_cores)
-{
+DCLCRWLock::DCLCRWLock(int num_cores) {
     this->numCores = num_cores;
-    countersLength = num_cores*DCLC_COUNTERS_RATIO;
+    countersLength = num_cores * DCLC_COUNTERS_RATIO;
     writersMutex.store(DCLC_RWL_UNLOCKED);
     readersCounters = new std::atomic<int>[countersLength];
     for (int idx = 0; idx < countersLength; idx += DCLC_COUNTERS_RATIO) {
@@ -79,33 +72,28 @@ DCLCRWLock::DCLCRWLock (int num_cores)
     }
 }
 
-
 /**
  * Default destructor
  */
-DCLCRWLock::~DCLCRWLock ()
-{
+DCLCRWLock::~DCLCRWLock() {
     delete[] readersCounters;
     writersMutex.store(DCLC_RWL_UNLOCKED);
 }
-
 
 /**
  * Hashes a number and returns the index in the array of Reader's counters
  *
  * Returns a random index to be used in readers_counters[]
  */
-int DCLCRWLock::thread2idx (void) {
+int DCLCRWLock::thread2idx(void) {
     std::size_t tid = hashFunc(std::this_thread::get_id());
-    return (int)((tid % numCores)*DCLC_COUNTERS_RATIO);
+    return (int)((tid % numCores) * DCLC_COUNTERS_RATIO);
 }
-
 
 /**
  *
  */
-void DCLCRWLock::sharedLock (void)
-{
+void DCLCRWLock::sharedLock(void) {
     const int idx = thread2idx();
     while (true) {
         readersCounters[idx].fetch_add(1);
@@ -122,13 +110,11 @@ void DCLCRWLock::sharedLock (void)
     }
 }
 
-
 /**
  *
  *
  */
-bool DCLCRWLock::sharedUnlock (void)
-{
+bool DCLCRWLock::sharedUnlock(void) {
     if (readersCounters[thread2idx()].fetch_add(-1) <= 0) {
         // ERROR: no matching lock() for this unlock()
         std::cout << "ERROR: no matching lock() for this unlock()\n";
@@ -138,12 +124,10 @@ bool DCLCRWLock::sharedUnlock (void)
     }
 }
 
-
 /**
  *
  */
-void DCLCRWLock::exclusiveLock (void)
-{
+void DCLCRWLock::exclusiveLock(void) {
     int old = DCLC_RWL_UNLOCKED;
     // Try to acquire the write-lock
     while (!writersMutex.compare_exchange_strong(old, DCLC_RWL_LOCKED)) {
@@ -158,24 +142,21 @@ void DCLCRWLock::exclusiveLock (void)
     }
 }
 
-
 /**
  *
  */
-bool DCLCRWLock::exclusiveUnlock (void)
-{
+bool DCLCRWLock::exclusiveUnlock(void) {
     if (writersMutex.load(std::memory_order_relaxed) != DCLC_RWL_LOCKED) {
         // ERROR: Tried to unlock an non-locked write-lock
-        std::cout << "********* ERROR: Tried to unlock an non-locked write-lock\n";
+        std::cout
+            << "********* ERROR: Tried to unlock an non-locked write-lock\n";
         return false;
     }
     writersMutex.store(DCLC_RWL_UNLOCKED);
     return true;
 }
 
-
-bool DCLCRWLock::trySharedLock (void)
-{
+bool DCLCRWLock::trySharedLock(void) {
     const int tid = thread2idx();
     readersCounters[tid].fetch_add(1);
     if (writersMutex.load() == DCLC_RWL_UNLOCKED) {
@@ -189,8 +170,6 @@ bool DCLCRWLock::trySharedLock (void)
 }
 
 /* TODO: implement the writer's trylock and the timeouts */
-
-
 
 } // end namespace internal
 } // end namespace nvmm

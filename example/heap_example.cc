@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -31,15 +31,14 @@
 
 using namespace nvmm;
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     init_log(boost::log::trivial::severity_level::fatal);
 
     MemoryManager *mm = MemoryManager::GetInstance();
 
     // create a new 128MB NVM region with pool id 2
     PoolId pool_id = 2;
-    size_t size = 128*1024*1024; // 128MB
+    size_t size = 128 * 1024 * 1024; // 128MB
     ErrorCode ret = mm->CreateHeap(pool_id, size);
     assert(ret == NO_ERROR);
 
@@ -49,15 +48,17 @@ int main(int argc, char **argv)
     assert(ret == NO_ERROR);
 
     // open the heap
-    ret =  heap->Open();
+    ret = heap->Open();
     assert(ret == NO_ERROR);
 
     // use the heap
-    GlobalPtr ptr = heap->Alloc(sizeof(int));  // Alloc returns a GlobalPtr consisting of a shelf ID
-                                               // and offset
+    GlobalPtr ptr =
+        heap->Alloc(sizeof(int)); // Alloc returns a GlobalPtr consisting of a
+                                  // shelf ID and offset
     assert(ptr.IsValid() == true);
 
-    int *int_ptr = (int*)mm->GlobalToLocal(ptr);  // convert the GlobalPtr into a local pointer
+    int *int_ptr = (int *)mm->GlobalToLocal(
+        ptr); // convert the GlobalPtr into a local pointer
 
     *int_ptr = 123;
     assert(*int_ptr == 123);

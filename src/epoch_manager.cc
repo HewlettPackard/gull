@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -25,17 +25,17 @@
 
 #include <memory>
 
+#include <assert.h>
+#include <boost/filesystem.hpp>
+#include <iostream>
 #include <stddef.h>
 #include <stdint.h>
-#include <assert.h>
-#include <iostream>
 #include <string>
 #include <thread>
 #include <unistd.h>
-#include <boost/filesystem.hpp>
 
-#include "nvmm/error_code.h"
 #include "nvmm/epoch_manager.h"
+#include "nvmm/error_code.h"
 #include "nvmm/log.h"
 
 #include "common/config.h"
@@ -48,44 +48,37 @@ namespace nvmm {
 /*
  * Internal implementation of EpochManager
  */
-class EpochManager::Impl_
-{
-public:
+class EpochManager::Impl_ {
+  public:
     EpochManagerImpl *em;
 
-    Impl_()
-        : em(NULL), epoch_shelf_(config.EpochShelfPath)
-    {
-    }
-    ~Impl_()
-    {
-    }
+    Impl_() : em(NULL), epoch_shelf_(config.EpochShelfPath) {}
+    ~Impl_() {}
 
     ErrorCode Init();
     ErrorCode Final();
 
-private:
+  private:
     EpochShelf epoch_shelf_;
 };
 
-ErrorCode EpochManager::Impl_::Init()
-{
-    boost::filesystem::path shelf_base_path = boost::filesystem::path(config.ShelfBase);
-    if (boost::filesystem::exists(shelf_base_path) == false)
-    {
+ErrorCode EpochManager::Impl_::Init() {
+    boost::filesystem::path shelf_base_path =
+        boost::filesystem::path(config.ShelfBase);
+    if (boost::filesystem::exists(shelf_base_path) == false) {
         LOG(fatal) << "NVMM: LFS/tmpfs does not exist?" << config.ShelfBase;
         exit(1);
     }
 
-    if (epoch_shelf_.Exist() == false)
-    {
-        LOG(fatal) << "NVMM: Epoch shelf does not exist?" << config.EpochShelfPath;
+    if (epoch_shelf_.Exist() == false) {
+        LOG(fatal) << "NVMM: Epoch shelf does not exist?"
+                   << config.EpochShelfPath;
         exit(1);
     }
 
-    if (epoch_shelf_.Open() != NO_ERROR)
-    {
-        LOG(fatal) << "NVMM: Epoch shelf open failed..." << config.EpochShelfPath;
+    if (epoch_shelf_.Open() != NO_ERROR) {
+        LOG(fatal) << "NVMM: Epoch shelf open failed..."
+                   << config.EpochShelfPath;
         exit(1);
     }
 
@@ -95,20 +88,17 @@ ErrorCode EpochManager::Impl_::Init()
     return NO_ERROR;
 }
 
-ErrorCode EpochManager::Impl_::Final()
-{
+ErrorCode EpochManager::Impl_::Final() {
     if (em)
         delete em;
 
     ErrorCode ret = epoch_shelf_.Close();
-    if (ret!=NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         LOG(fatal) << "NVMM: Epoch shelf close failed" << config.EpochShelfPath;
         exit(1);
     }
     return ret;
 }
-
 
 /*
  * Public APIs of EpochManager
@@ -116,52 +106,34 @@ ErrorCode EpochManager::Impl_::Final()
 
 // thread-safe Singleton pattern with C++11
 // see http://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/
-EpochManager *EpochManager::GetInstance()
-{
+EpochManager *EpochManager::GetInstance() {
     static EpochManager instance;
     return &instance;
 }
 
-EpochManager::EpochManager()
-{
-    Start();
-}
+EpochManager::EpochManager() { Start(); }
 
-EpochManager::~EpochManager()
-{
-    Stop();
-}
+EpochManager::~EpochManager() { Stop(); }
 
-void EpochManager::Stop()
-{
+void EpochManager::Stop() {
     ErrorCode ret = pimpl_->Final();
     assert(ret == NO_ERROR);
-    if(pimpl_)
+    if (pimpl_)
         delete pimpl_;
 }
 
-void EpochManager::Start()
-{
+void EpochManager::Start() {
     pimpl_ = new Impl_;
     assert(pimpl_);
     ErrorCode ret = pimpl_->Init();
     assert(ret == NO_ERROR);
 }
 
-void EpochManager::DisableMonitor()
-{
-    pimpl_->em->disable_monitor();
-}
+void EpochManager::DisableMonitor() { pimpl_->em->disable_monitor(); }
 
-void EpochManager::enter_critical() {
-    pimpl_->em->enter_critical();
-}
+void EpochManager::enter_critical() { pimpl_->em->enter_critical(); }
 
-
-void EpochManager::exit_critical() {
-    pimpl_->em->exit_critical();
-}
-
+void EpochManager::exit_critical() { pimpl_->em->exit_critical(); }
 
 bool EpochManager::exists_active_critical() {
     return pimpl_->em->exists_active_critical();
@@ -170,7 +142,6 @@ bool EpochManager::exists_active_critical() {
 EpochCounter EpochManager::reported_epoch() {
     return pimpl_->em->reported_epoch();
 }
-
 
 EpochCounter EpochManager::frontier_epoch() {
     return pimpl_->em->frontier_epoch();
@@ -184,14 +155,8 @@ void EpochManager::set_debug_level(int level) {
     pimpl_->em->set_debug_level(level);
 }
 
-void EpochManager::reset_vector()
-{
-    pimpl_->em->reset_vector();
-}
+void EpochManager::reset_vector() { pimpl_->em->reset_vector(); }
 
-pid_t EpochManager::self_id()
-{
-    return pimpl_->em->self_id();
-}
+pid_t EpochManager::self_id() { return pimpl_->em->self_id(); }
 
 } // end namespace nvmm

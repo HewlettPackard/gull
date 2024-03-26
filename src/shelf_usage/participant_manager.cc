@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -34,79 +34,79 @@
 #include <string>
 #include <unistd.h>
 
-
 namespace nvmm {
 
-
-
-/* Gets a unique id for the caller. 
+/* Gets a unique id for the caller.
    The current implementation merely returns process id of the caller.
    TODO: on The Machine, this may return SOC-id:Boot-count:PID
 */
-ParticipantID ParticipantManager::get_self_id(){
-    return getpid();
-}
-
+ParticipantID ParticipantManager::get_self_id() { return getpid(); }
 
 /* Checks if the given participant is alive.
    Return: true: if alive
            false: if not alive
-   The API throws an error if the pid exits but does not belong to the process group or 
-   can't receive a signal from the sender.
+   The API throws an error if the pid exits but does not belong to the process
+   group or can't receive a signal from the sender.
 */
 
-bool ParticipantManager::is_alive(ParticipantID pid){
+bool ParticipantManager::is_alive(ParticipantID pid) {
     std::ostringstream msg;
-    // First check if there exists a process with this id. kill(pid, 0) accomplishes this objective.
+    // First check if there exists a process with this id. kill(pid, 0)
+    // accomplishes this objective.
     int ret = kill(pid, 0);
     if (ret) {
-        switch(errno){
-            default: {
-                        perror(NULL);
-                        msg << "Error in ParticipantManager::Terminate() kill(0) caller pid: " << (uint64_t)get_self_id() << " target pid: " << (uint64_t) pid;
-                        throw std::runtime_error(msg.str());
-                        break;
-                     }
+        switch (errno) {
+        default: {
+            perror(NULL);
+            msg << "Error in ParticipantManager::Terminate() kill(0) caller "
+                   "pid: "
+                << (uint64_t)get_self_id() << " target pid: " << (uint64_t)pid;
+            throw std::runtime_error(msg.str());
+            break;
+        }
 
-            case ESRCH: {
-                       // Either someone else killed it or the passed in pid is rogue. We can't distinguish these two.
-                       // We simply infer that no such participant exists
-                       return false; // dead
-                    }
+        case ESRCH: {
+            // Either someone else killed it or the passed in pid is rogue. We
+            // can't distinguish these two. We simply infer that no such
+            // participant exists
+            return false; // dead
+        }
         }
     }
     return true; // alive
 }
 
-/* Kill the process identified by pid. 
-   The current implementation merely calls kill(SIGKILL). 
+/* Kill the process identified by pid.
+   The current implementation merely calls kill(SIGKILL).
    The pid must be a valid id.
-   The call is idempotent. If the target pid is already killed, the call acts as nop.
-   The implementation can't distinguish between a rogue non-existing pid vs. a previously killed pid.
+   The call is idempotent. If the target pid is already killed, the call acts as
+   nop. The implementation can't distinguish between a rogue non-existing pid
+   vs. a previously killed pid.
 */
 
-void ParticipantManager::terminate(ParticipantID pid){
+void ParticipantManager::terminate(ParticipantID pid) {
     std::ostringstream msg;
     // Assuming the process exits, let's attempt to kill it
     int ret = kill(pid, SIGKILL);
     if (ret) {
-        switch(errno){
-            default: {
-                        perror(NULL);
-                        msg << "Error in ParticipantManager::Terminate() kill(SIGKILL) caller pid: " << (uint64_t)get_self_id() << " target pid: " << (uint64_t) pid;
-                        throw std::runtime_error(msg.str());
-                        break;
-                     }
+        switch (errno) {
+        default: {
+            perror(NULL);
+            msg << "Error in ParticipantManager::Terminate() kill(SIGKILL) "
+                   "caller "
+                   "pid: "
+                << (uint64_t)get_self_id() << " target pid: " << (uint64_t)pid;
+            throw std::runtime_error(msg.str());
+            break;
+        }
 
-            case ESRCH: { 
-                       // Either someone else killed it or the passed in pid is rogue. We can't distinguish these two.
-                       // We simply return in this case.
-                       return;
-                    }
+        case ESRCH: {
+            // Either someone else killed it or the passed in pid is rogue. We
+            // can't distinguish these two. We simply return in this case.
+            return;
+        }
         }
     }
 }
-
-
 
 } // end namespace nvmm

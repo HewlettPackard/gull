@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -26,81 +26,64 @@
 #ifndef _NVMM_ZONE_ENTRY_H_
 #define _NVMM_ZONE_ENTRY_H_
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <assert.h>
 
 namespace nvmm {
 
 struct zone_entry {
-    zone_entry(bool alloc, uint64_t level, uint64_t next=0) {
-	value = 0;
-	set_alloc(alloc);
-	set_level(level);
-	set_next(next);
+    zone_entry(bool alloc, uint64_t level, uint64_t next = 0) {
+        value = 0;
+        set_alloc(alloc);
+        set_level(level);
+        set_next(next);
     }
 
-    bool is_allocated() {
-	return get_alloc()?true:false;
-    }
+    bool is_allocated() { return get_alloc() ? true : false; }
 
-    uint64_t level() {
-	return get_level();
-    }
+    uint64_t level() { return get_level(); }
 
-    uint64_t next() {
-	return get_next();
-    }
+    uint64_t next() { return get_next(); }
 
-    void link_next(uint64_t next) {
-	set_next(next);
-    }
+    void link_next(uint64_t next) { set_next(next); }
 
     // zone_entry to uint64_t
-    operator uint64_t() const {
-	return value;
-    }
+    operator uint64_t() const { return value; }
 
     // uint64_t to zone_entry
-    zone_entry(uint64_t val) {
-    	value = val;
-    }
+    zone_entry(uint64_t val) { value = val; }
 
-private:
+  private:
     uint64_t value;
 
     // bit 0 (MSB) is the allocation bit
-    static const uint64_t alloc_bit_mask = (1UL<<63);
-    inline uint64_t get_alloc() {
-	return (value & alloc_bit_mask) >> 63;
-    }
+    static const uint64_t alloc_bit_mask = (1UL << 63);
+    inline uint64_t get_alloc() { return (value & alloc_bit_mask) >> 63; }
     inline void set_alloc(bool alloc) {
-	if (alloc)
-	    value = alloc_bit_mask | (get_level() <<56) | get_next();
-	else
-	    value = (get_level() <<56) | get_next();
+        if (alloc)
+            value = alloc_bit_mask | (get_level() << 56) | get_next();
+        else
+            value = (get_level() << 56) | get_next();
     }
 
     // bit 1-7 (MSB) is the level of this chunk (up to 127)
-    static const uint64_t level_mask = (((1UL<<7)-1) << 56);
-    inline uint64_t get_level() {
-	return (value & level_mask) >> 56;
-    }
+    static const uint64_t level_mask = (((1UL << 7) - 1) << 56);
+    inline uint64_t get_level() { return (value & level_mask) >> 56; }
     inline void set_level(uint64_t level) {
-	assert(level<(1UL<<7));
-	value = (get_alloc() <<63) | (level << 56) | get_next();
+        assert(level < (1UL << 7));
+        value = (get_alloc() << 63) | (level << 56) | get_next();
     }
 
-    // bit 8- (MSB) is the index of the next chunk, if this chunk is linked to the freelist
-    static const uint64_t next_mask = ((1UL<<56)-1);
-    inline uint64_t get_next() {
-	return value & next_mask;
-    }
+    // bit 8- (MSB) is the index of the next chunk, if this chunk is linked to
+    // the freelist
+    static const uint64_t next_mask = ((1UL << 56) - 1);
+    inline uint64_t get_next() { return value & next_mask; }
     inline void set_next(uint64_t index) {
-	assert(index<(1UL<<56));
-	value = (get_alloc() <<63) | (get_level() << 56) | index;
+        assert(index < (1UL << 56));
+        value = (get_alloc() << 63) | (get_level() << 56) | index;
     }
 };
 
-}
+} // namespace nvmm
 #endif

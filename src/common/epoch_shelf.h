@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -32,9 +32,8 @@
 
 namespace nvmm {
 
-class EpochShelf
-{
-public:
+class EpochShelf {
+  public:
     EpochShelf() = delete; // no default
     EpochShelf(std::string pathname);
     ~EpochShelf();
@@ -47,10 +46,9 @@ public:
     bool IsOpen();
     void *Addr();
 
-
-private:
-    static uint64_t const kMagicNum = 3762474353; // epoch shelf
-    static size_t const kShelfSize = 128*1024*1024; // 128MB
+  private:
+    static uint64_t const kMagicNum = 3762474353;       // epoch shelf
+    static size_t const kShelfSize = 128 * 1024 * 1024; // 128MB
     std::string path_;
     int fd_;
     void *addr_;

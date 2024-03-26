@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -35,11 +35,8 @@
 #include "shelf_usage/epoch_vector_internal.h"
 #include "shelf_usage/hrtime.h"
 
-
 namespace nvmm {
 namespace internal {
-
-
 
 /*
  * _EpochVector
@@ -50,33 +47,30 @@ EpochCounter _EpochVector::frontier() {
     return frontier;
 }
 
-
 EpochCounter _EpochVector::set_frontier(EpochCounter epoch) {
     fam_atomic_64_write(&frontier_, epoch);
     int64_t frontier = fam_atomic_64_read(&frontier_);
     return frontier;
 }
 
-
-EpochCounter _EpochVector::cas_frontier(EpochCounter old_epoch, EpochCounter new_epoch)
-{
-    int64_t old_frontier = fam_atomic_64_compare_store(&frontier_, old_epoch, new_epoch);
+EpochCounter _EpochVector::cas_frontier(EpochCounter old_epoch,
+                                        EpochCounter new_epoch) {
+    int64_t old_frontier =
+        fam_atomic_64_compare_store(&frontier_, old_epoch, new_epoch);
     return old_frontier;
 }
-
 
 EpochCounter _EpochVector::reported(int slot_id) {
     int64_t reported = fam_atomic_64_read(&slot_[slot_id].reported);
     return reported;
 }
 
-
 void _EpochVector::set_reported(int slot_id, EpochCounter epoch) {
     fam_atomic_64_write(&slot_[slot_id].reported, epoch);
 }
 
-
-int _EpochVector::slot(int slot_id, ParticipantID* pid, EpochCounter* reported) {
+int _EpochVector::slot(int slot_id, ParticipantID *pid,
+                       EpochCounter *reported) {
     _EpochVectorSlot result;
     fam_atomic_128_read(slot_[slot_id].i64, result.i64);
     if (pid) {
@@ -88,13 +82,17 @@ int _EpochVector::slot(int slot_id, ParticipantID* pid, EpochCounter* reported) 
     return 0;
 }
 
-
-void _EpochVector::cas_slot(int slot_id, ParticipantID old_pid, EpochCounter old_reported, ParticipantID new_pid, EpochCounter new_reported, ParticipantID* result_pid, EpochCounter* result_reported) {
+void _EpochVector::cas_slot(int slot_id, ParticipantID old_pid,
+                            EpochCounter old_reported, ParticipantID new_pid,
+                            EpochCounter new_reported,
+                            ParticipantID *result_pid,
+                            EpochCounter *result_reported) {
     _EpochVectorSlot compare(old_pid, old_reported);
     _EpochVectorSlot store(new_pid, new_reported);
     _EpochVectorSlot result;
- 
-    fam_atomic_128_compare_store(slot_[slot_id].i64, compare.i64, store.i64, result.i64);
+
+    fam_atomic_128_compare_store(slot_[slot_id].i64, compare.i64, store.i64,
+                                 result.i64);
     if (result_pid) {
         *result_pid = result.pid;
     }
@@ -103,14 +101,15 @@ void _EpochVector::cas_slot(int slot_id, ParticipantID old_pid, EpochCounter old
     }
 }
 
-
 int _EpochVector::acquire_slot(ParticipantID pid) {
     int slot_id = -1;
-    for (int i=0; i<NR_PARTICIPANT; i++) {
+    for (int i = 0; i < NR_PARTICIPANT; i++) {
         ParticipantID result_pid;
-        EpochCounter  result_reported;
-        cas_slot(i, PID_NO_PARTICIPANT, EPOCH_NO_PARTICIPANT, pid, EPOCH_NEW_PARTICIPANT, &result_pid, &result_reported);
-        if (result_pid == PID_NO_PARTICIPANT && result_reported == EPOCH_NO_PARTICIPANT) {
+        EpochCounter result_reported;
+        cas_slot(i, PID_NO_PARTICIPANT, EPOCH_NO_PARTICIPANT, pid,
+                 EPOCH_NEW_PARTICIPANT, &result_pid, &result_reported);
+        if (result_pid == PID_NO_PARTICIPANT &&
+            result_reported == EPOCH_NO_PARTICIPANT) {
             slot_id = i;
             break;
         }
@@ -118,33 +117,29 @@ int _EpochVector::acquire_slot(ParticipantID pid) {
     return slot_id;
 }
 
-
 void _EpochVector::release_slot(int slot_id) {
     _EpochVectorSlot value(PID_NO_PARTICIPANT, EPOCH_NO_PARTICIPANT);
-    // FIXME: this should be a CAS instead to ensure that if multiple 
+    // FIXME: this should be a CAS instead to ensure that if multiple
     // recovery participants try to release the slot only one succeeds
-    // and prevent the race when a first recovery process releases the 
-    // slot, then a new participant grabs the slot the slot, and then a 
+    // and prevent the race when a first recovery process releases the
+    // slot, then a new participant grabs the slot the slot, and then a
     // second recovery process resets the slot. A CAS would prevent this
-    // as participants register by writing their ID and ID is unique. 
+    // as participants register by writing their ID and ID is unique.
     fam_atomic_128_write(slot_[slot_id].i64, value.i64);
 }
 
 void _EpochVector::reset() {
     fam_atomic_128_write(&frontier_, 0);
-    for (int i=0; i<NR_PARTICIPANT; i++) {
+    for (int i = 0; i < NR_PARTICIPANT; i++) {
         fam_atomic_128_write(slot_[i].i64, 0);
     }
 }
 
 /*
  * EpochVector
- */ 
+ */
 
-
-EpochVector::EpochVector(_EpochVector* ev, bool may_create)
-    : ev_(ev)
-{
+EpochVector::EpochVector(_EpochVector *ev, bool may_create) : ev_(ev) {
     if (may_create) {
         ev_->set_frontier(EPOCH_MIN_ACTIVE);
     }
@@ -152,8 +147,8 @@ EpochVector::EpochVector(_EpochVector* ev, bool may_create)
     cache_ = new Element[NR_PARTICIPANT];
 }
 
-
-int EpochVector::register_participant(ParticipantID pid, Participant* participant) {
+int EpochVector::register_participant(ParticipantID pid,
+                                      Participant *participant) {
     int slot;
     if ((slot = ev_->acquire_slot(pid)) < 0) {
         return -1;
@@ -163,23 +158,17 @@ int EpochVector::register_participant(ParticipantID pid, Participant* participan
     return 0;
 }
 
-
-void EpochVector::unregister_participant(Participant& participant) {
+void EpochVector::unregister_participant(Participant &participant) {
     cache_[participant.slot_].valid_ = false;
     ev_->release_slot(participant.slot_);
 }
 
+EpochCounter EpochVector::frontier() { return ev_->frontier(); }
 
-EpochCounter EpochVector::frontier() {
-    return ev_->frontier();
-}
-
-
-EpochCounter EpochVector::cas_frontier(EpochCounter old_epoch, EpochCounter new_epoch)
-{
+EpochCounter EpochVector::cas_frontier(EpochCounter old_epoch,
+                                       EpochCounter new_epoch) {
     return ev_->cas_frontier(old_epoch, new_epoch);
 }
-
 
 EpochCounter EpochVector::reported(int slot) {
     if (cache_[slot].valid_) {
@@ -197,7 +186,6 @@ EpochCounter EpochVector::reported(int slot) {
     return reported;
 }
 
-
 void EpochVector::set_reported(int slot, EpochCounter epoch) {
     ev_->set_reported(slot, epoch);
     // cache so that we avoid a trip to FAM next time we read
@@ -206,26 +194,21 @@ void EpochVector::set_reported(int slot, EpochCounter epoch) {
     cache_[slot].last_modified_ = get_hrtime();
 }
 
-
 struct timespec EpochVector::last_modified(int slot) {
     return cache_[slot].last_modified_;
 }
 
-
-ParticipantID EpochVector::pid(int slot) {
-    return cache_[slot].pid_;
-}
-
+ParticipantID EpochVector::pid(int slot) { return cache_[slot].pid_; }
 
 void EpochVector::invalidate_cache() {
-    for (int i=0; i<NR_PARTICIPANT; i++) {
+    for (int i = 0; i < NR_PARTICIPANT; i++) {
         cache_[i].valid_ = false;
     }
 }
 
 void EpochVector::refresh_modified_time() {
     HRTime current = get_hrtime();
-    for (int i=0; i<NR_PARTICIPANT; i++) {
+    for (int i = 0; i < NR_PARTICIPANT; i++) {
         cache_[i].last_modified_ = current;
     }
 }
@@ -234,22 +217,17 @@ EpochVector::Iterator EpochVector::begin() {
     return EpochVector::Iterator(this, 0);
 }
 
-
 EpochVector::Iterator EpochVector::end() {
     return EpochVector::Iterator(this, NR_PARTICIPANT);
 }
 
-std::string EpochVector::to_string()
-{
+std::string EpochVector::to_string() {
     std::stringstream ss;
 
     ss << std::left << std::setw(1) << "F" << ": ";
     ss << std::left << std::setw(10) << frontier();
 
-    for (EpochVector::Iterator it = begin();
-         it != end(); 
-         it++) 
-    { 
+    for (EpochVector::Iterator it = begin(); it != end(); it++) {
         EpochVector::Participant ptc = *it;
         if (ptc.reported() > EPOCH_MIN_ACTIVE) {
             ss << std::right << std::setw(7) << ptc.id() << ": ";
@@ -260,85 +238,61 @@ std::string EpochVector::to_string()
     return ss.str();
 }
 
-void EpochVector::reset()
-{
-    ev_->reset();
-}
+void EpochVector::reset() { ev_->reset(); }
 
 /*
  * EpochVector::Iterator
  */
 
-EpochVector::Iterator::Iterator()
-    : ev_(NULL),
-      slot_(-1)
-{ }
+EpochVector::Iterator::Iterator() : ev_(NULL), slot_(-1) {}
 
+EpochVector::Iterator::Iterator(EpochVector *ev, int slot)
+    : ev_(ev), slot_(slot) {}
 
-EpochVector::Iterator::Iterator(EpochVector* ev, int slot)
-    : ev_(ev),
-      slot_(slot)
-{ }
-
-
-EpochVector::Participant EpochVector::Iterator::operator*() const
-{
+EpochVector::Participant EpochVector::Iterator::operator*() const {
     Participant ptc(ev_, slot_);
     return ptc;
 }
 
-
-bool EpochVector::Iterator::operator==(const EpochVector::Iterator& other) const
-{
-    return this->ev_ == other.ev_ && this->slot_ == other.slot_;    
+bool EpochVector::Iterator::operator==(
+    const EpochVector::Iterator &other) const {
+    return this->ev_ == other.ev_ && this->slot_ == other.slot_;
 }
 
-
-bool EpochVector::Iterator::operator!=(const EpochVector::Iterator& other) const
-{
+bool EpochVector::Iterator::operator!=(
+    const EpochVector::Iterator &other) const {
     return !(*this == other);
 }
 
-
-EpochVector::Iterator& EpochVector::Iterator::operator++()
-{
+EpochVector::Iterator &EpochVector::Iterator::operator++() {
     slot_++;
     return *this;
 }
 
-
-EpochVector::Iterator EpochVector::Iterator::operator++(int)
-{
+EpochVector::Iterator EpochVector::Iterator::operator++(int) {
     EpochVector::Iterator it(*this);
     ++(*this);
     return it;
 }
 
-
 /*
  * EpochVector::Participant
- */ 
+ */
 
-EpochVector::Participant::Participant()
-    : ev_(NULL),
-      slot_(-1)
-{ }
+EpochVector::Participant::Participant() : ev_(NULL), slot_(-1) {}
 
-
-EpochVector::Participant::Participant(EpochVector* ev, int slot)
-    : ev_(ev),
-      slot_(slot)
-{ }
+EpochVector::Participant::Participant(EpochVector *ev, int slot)
+    : ev_(ev), slot_(slot) {}
 
 void EpochVector::Participant::activate() {
-    // First, freeze the frontier by letting all other epoch-managers know 
+    // First, freeze the frontier by letting all other epoch-managers know
     // we are entering an epoch.
     //
-    // Assumption: After we become an active participant, we never become 
-    // inactive until we terminate (normal exit or crash). Thus, it is safe 
-    // to assume that state transition always results in increasing values 
-    // of reported epoch counters. Otherwise, simply overwriting reported 
-    // epoch with EPOCH_ACTIVE_PARTICIPANT could confuse observers by 
+    // Assumption: After we become an active participant, we never become
+    // inactive until we terminate (normal exit or crash). Thus, it is safe
+    // to assume that state transition always results in increasing values
+    // of reported epoch counters. Otherwise, simply overwriting reported
+    // epoch with EPOCH_ACTIVE_PARTICIPANT could confuse observers by
     // seeing epoch counters going backwards.
     update_reported(EPOCH_ACTIVE_PARTICIPANT);
 
@@ -346,31 +300,23 @@ void EpochVector::Participant::activate() {
     update_reported(ev_->frontier());
 }
 
-
 void EpochVector::Participant::unregister() {
     ev_->unregister_participant(*this);
 }
-
 
 void EpochVector::Participant::update_reported(EpochCounter epoch) {
     ev_->set_reported(slot_, epoch);
 }
 
-
 EpochCounter EpochVector::Participant::reported() {
     return ev_->reported(slot_);
 }
-
 
 struct timespec EpochVector::Participant::last_modified() {
     return ev_->last_modified(slot_);
 }
 
-ParticipantID EpochVector::Participant::id() {
-    return ev_->pid(slot_);
-}
-
-
+ParticipantID EpochVector::Participant::id() { return ev_->pid(slot_); }
 
 } // end namespace internal
 } // end namespace nvmm

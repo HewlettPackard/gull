@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -23,37 +23,32 @@
  *
  */
 
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-#include "nvmm/nvmm_fam_atomic.h"
-#include "nvmm/log.h"
 #include "nvmm/error_code.h"
-#include "nvmm/shelf_id.h"
+#include "nvmm/log.h"
 #include "nvmm/memory_manager.h"
+#include "nvmm/nvmm_fam_atomic.h"
+#include "nvmm/shelf_id.h"
 
 #include "test_common/test.h"
-
 
 namespace nvmm {
 
 // TODO: move this to nvmm level
 // NOTE: this function must be run once and only once for every test
-void Environment::SetUp()
-{
+void Environment::SetUp() {
 #ifdef LFSWORKAROUND
     sleep(10);
 #endif
     // init boost::log
-    if (to_console_ == true)
-    {
+    if (to_console_ == true) {
         nvmm::init_log(level_, "");
-    }
-    else
-    {
+    } else {
         nvmm::init_log(level_, "mm.log");
     }
 

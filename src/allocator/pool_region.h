@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -30,18 +30,17 @@
 #include <stdint.h>
 
 #include "nvmm/error_code.h"
-#include "nvmm/shelf_id.h"
 #include "nvmm/region.h"
+#include "nvmm/shelf_id.h"
 
 #include "shelf_mgmt/pool.h"
 
-namespace nvmm{
+namespace nvmm {
 
 class ShelfRegion;
 
-class PoolRegion : public Region
-{
-public:
+class PoolRegion : public Region {
+  public:
     PoolRegion() = delete;
     PoolRegion(PoolId pool_id);
     ~PoolRegion();
@@ -51,19 +50,14 @@ public:
 
     ErrorCode Open(int flags);
     ErrorCode Close();
-    size_t Size()
-    {
-        return size_;
-    }
-    bool IsOpen()
-    {
-        return is_open_;
-    }
+    size_t Size() { return size_; }
+    bool IsOpen() { return is_open_; }
 
-    ErrorCode Map(void *addr_hint, size_t length, int prot, int flags, loff_t offset, void **mapped_addr);
+    ErrorCode Map(void *addr_hint, size_t length, int prot, int flags,
+                  loff_t offset, void **mapped_addr);
     ErrorCode Unmap(void *mapped_addr, size_t length);
 
-private:
+  private:
     static int const kShelfIdx = 0; // this is the only shelf in the pool
 
     PoolId pool_id_;

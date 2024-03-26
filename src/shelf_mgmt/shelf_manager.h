@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -88,7 +88,8 @@ class ShelfManager {
                     // specifically, mapping/unmapping/finding shelves)
     // shelf ID => base ptr and length
     static std::unordered_map<ShelfId, std::tuple<void *, size_t, bool, int>,
-                              ShelfId::Hash, ShelfId::Equal> map_;
+                              ShelfId::Hash, ShelfId::Equal>
+        map_;
     // base ptr => shelf ID and length
     static std::map<void *, std::tuple<ShelfId, size_t, bool>> reverse_map_;
 };

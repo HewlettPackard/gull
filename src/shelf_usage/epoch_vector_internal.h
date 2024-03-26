@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -29,42 +29,32 @@
 #include "nvmm/epoch_manager.h"
 #include "shelf_usage/epoch_vector.h"
 
-
 namespace nvmm {
 namespace internal {
-
-
 
 /*
  * EpochVector internal structures stored in fabric-attached memory
  */
 
 const ParticipantID PID_NO_PARTICIPANT = 0;
-const EpochCounter  EPOCH_NO_PARTICIPANT = 0;
-const EpochCounter  EPOCH_NEW_PARTICIPANT = 1;
-const EpochCounter  EPOCH_ACTIVE_PARTICIPANT = 2;
-const EpochCounter  EPOCH_MIN_ACTIVE = EPOCH_ACTIVE_PARTICIPANT;
-
+const EpochCounter EPOCH_NO_PARTICIPANT = 0;
+const EpochCounter EPOCH_NEW_PARTICIPANT = 1;
+const EpochCounter EPOCH_ACTIVE_PARTICIPANT = 2;
+const EpochCounter EPOCH_MIN_ACTIVE = EPOCH_ACTIVE_PARTICIPANT;
 
 // Maximum number of participants in the epoch protocol
 #define NR_PARTICIPANT 128
-
 
 /**
  * Participant slot
  */
 struct _EpochVectorSlot {
-    _EpochVectorSlot()
-        : i64_0(0),
-          reported(EPOCH_NO_PARTICIPANT)
-    { 
+    _EpochVectorSlot() : i64_0(0), reported(EPOCH_NO_PARTICIPANT) {
         pid = PID_NO_PARTICIPANT;
     }
 
     _EpochVectorSlot(ParticipantID _pid, EpochCounter _reported)
-        : i64_0(0),
-          reported(_reported)
-    { 
+        : i64_0(0), reported(_reported) {
         pid = _pid;
     }
 
@@ -77,28 +67,27 @@ struct _EpochVectorSlot {
                 int64_t i64_0;
             };
             /** The epoch counter reported by each participant */
-            EpochCounter  reported;
+            EpochCounter reported;
         };
         int64_t i64[2];
     };
 };
 
-
 /**
- * \brief Vector comprising frontier epoch and participant slots 
+ * \brief Vector comprising frontier epoch and participant slots
  *
- * \details 
- * Must be allocated in FAM: epoch vector is a global data structure 
+ * \details
+ * Must be allocated in FAM: epoch vector is a global data structure
  * visible by all participating participants.
  *
- * Invariant: Processes may be executing at the frontier epoch or lack behind, 
+ * Invariant: Processes may be executing at the frontier epoch or lack behind,
  * but they are never ahead.
- * 
- * \todo Optimization: to reduce vector size, make reported be a diff relative 
+ *
+ * \todo Optimization: to reduce vector size, make reported be a diff relative
  * to frontier.
  */
 struct _EpochVector {
-public:
+  public:
     /** Return the frontier epoch */
     EpochCounter frontier();
 
@@ -108,17 +97,21 @@ public:
     /** CAS the frontier epoch */
     EpochCounter cas_frontier(EpochCounter old_epoch, EpochCounter new_epoch);
 
-    /** Return the last reported epoch (i.e., local epoch when entering a critical region) */
+    /** Return the last reported epoch (i.e., local epoch when entering a
+     * critical region) */
     EpochCounter reported(int slot);
 
     /** Update reported epoch */
     void set_reported(int slot, EpochCounter epoch);
 
-    /** Return the participant id \a pid and participant's last reported epoch \a reported */
-    int slot(int slot, ParticipantID* pid, EpochCounter* reported);
+    /** Return the participant id \a pid and participant's last reported epoch
+     * \a reported */
+    int slot(int slot, ParticipantID *pid, EpochCounter *reported);
 
     /** CAS reported */
-    void cas_slot(int slot, ParticipantID old_pid, EpochCounter old_reported, ParticipantID new_pid, EpochCounter new_reported, ParticipantID* result_pid, EpochCounter* result_reported);
+    void cas_slot(int slot, ParticipantID old_pid, EpochCounter old_reported,
+                  ParticipantID new_pid, EpochCounter new_reported,
+                  ParticipantID *result_pid, EpochCounter *result_reported);
 
     /** Acquire next available slot */
     int acquire_slot(ParticipantID pid);
@@ -129,19 +122,18 @@ public:
     /** Reset vector contents to zero */
     void reset();
 
-private:
+  private:
     /** The frontier epoch counter. */
-    EpochCounter      frontier_;
+    EpochCounter frontier_;
     /** Dummy field to ensure slot_ is aligned at cache-line boundary */
-    int64_t           i64_0_[7];
+    int64_t i64_0_[7];
     /** Participant slots */
-    _EpochVectorSlot  slot_[NR_PARTICIPANT];
+    _EpochVectorSlot slot_[NR_PARTICIPANT];
 
-private:
-    _EpochVector(const _EpochVector&);              // disable copying
-    _EpochVector& operator=(const _EpochVector&);   // disable assignment
+  private:
+    _EpochVector(const _EpochVector &);            // disable copying
+    _EpochVector &operator=(const _EpochVector &); // disable assignment
 };
-
 
 } // end namespace internal
 } // end namespace nvmm

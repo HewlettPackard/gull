@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -26,20 +26,22 @@
 #ifndef _NVMM_LOG_H_
 #define _NVMM_LOG_H_
 
-#include <boost/log/trivial.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
 #include <boost/log/sinks/text_file_backend.hpp>
-#include <boost/log/utility/setup/file.hpp>
-#include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/sources/severity_logger.hpp>
+#include <boost/log/trivial.hpp>
+#include <boost/log/utility/setup/common_attributes.hpp>
+#include <boost/log/utility/setup/file.hpp>
 
 namespace nvmm {
 
 using namespace boost::log::trivial;
 // the global logger
-extern boost::log::sources::severity_logger_mt<boost::log::trivial::severity_level> logger;
+extern boost::log::sources::severity_logger_mt<
+    boost::log::trivial::severity_level>
+    logger;
 
 extern bool log_initialized;
 
@@ -49,14 +51,19 @@ void init_log(boost::log::trivial::severity_level level);
 void init_log(boost::log::trivial::severity_level level, std::string file_name);
 
 #ifdef PRINT_LOG
-#define LOG(severity) \
-    BOOST_LOG_SEV(nvmm::logger, boost::log::trivial::severity) << "(" << __FILE__ << ":" << __LINE__ << ") "
+#define LOG(severity)                                                          \
+    BOOST_LOG_SEV(nvmm::logger, boost::log::trivial::severity)                 \
+        << "(" << __FILE__ << ":" << __LINE__ << ") "
 
-#define TRACE() \
-    BOOST_LOG_SEV(nvmm::logger, boost::log::trivial::trace) << "(" << __FILE__ << ":" << __LINE__ << ") " << __PRETTY_FUNCTION__
+#define TRACE()                                                                \
+    BOOST_LOG_SEV(nvmm::logger, boost::log::trivial::trace)                    \
+        << "(" << __FILE__ << ":" << __LINE__ << ") " << __PRETTY_FUNCTION__
 #else
-#define LOG(severity) if(0)std::cerr
-#define TRACE() {}
+#define LOG(severity)                                                          \
+    if (0)                                                                     \
+    std::cerr
+#define TRACE()                                                                \
+    {}
 #endif
 
 } // namespace nvmm

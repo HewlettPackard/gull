@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -23,30 +23,31 @@
  *
  */
 
-#include <cstdlib>
 #include <cstddef>
+#include <cstdlib>
 #include <fcntl.h> // for O_RDWR
-#include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 #include <pthread.h>
+#include <sys/mman.h> // for PROT_READ, PROT_WRITE, MAP_SHARED
 #include <unistd.h>
 
+#include <boost/filesystem.hpp>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <boost/filesystem.hpp>
 
-#include "nvmm/log.h"
 #include "nvmm/error_code.h"
+#include "nvmm/log.h"
 #include "nvmm/memory_manager.h"
 
 #include "allocator/dist_heap.h"
-#include "shelf_usage/freelists.h"
 #include "shelf_mgmt/shelf_file.h"
+#include "shelf_usage/freelists.h"
 
 /*
-  There are two processes (process A and B) running on two nodes. They are using the same heap (1GB)
-  to allocate and free memory (512MB). Because the heap reserves a small amount of heap space to
-  store its own metadata, only one allocation of 512MB can succeed.
+  There are two processes (process A and B) running on two nodes. They are using
+  the same heap (1GB) to allocate and free memory (512MB). Because the heap
+  reserves a small amount of heap space to store its own metadata, only one
+  allocation of 512MB can succeed.
 
   Here are the steps for the demo:
   - Process A allocates a 512MB chunk and succeeds
@@ -66,23 +67,21 @@
       ./demo_multi_node_alloc_free runB
  */
 
-
 using namespace nvmm;
 
 PoolId const heap_pool_id = 1; // the pool id of the DistHeap
-size_t const heap_size = 1*1024*1024*1024LLU;   // 1GB
-size_t const alloc_unit = 512*1024*1024LLU; // 512MB
+size_t const heap_size = 1 * 1024 * 1024 * 1024LLU; // 1GB
+size_t const alloc_unit = 512 * 1024 * 1024LLU;     // 512MB
 
-size_t const comm_size = 128*1024*1024LLU;   // 128MB
+size_t const comm_size = 128 * 1024 * 1024LLU; // 128MB
 
-int Init()
-{
+int Init() {
     ErrorCode ret = NO_ERROR;
     bool fam_registered = false;
 
     // comm
     ShelfFile *shelf = NULL;
-    void* address = NULL;
+    void *address = NULL;
     FreeLists *comm = NULL;
 
     // heap
@@ -93,75 +92,73 @@ int Init()
 
     // create the global heap if it does not exist
     mm = MemoryManager::GetInstance();
-    std::cout << "Init: Creating the distibuted heap if it does not exist..." << std::endl;
+    std::cout << "Init: Creating the distibuted heap if it does not exist..."
+              << std::endl;
     ret = mm->FindHeap(heap_pool_id, &heap);
-    if (ret == ID_NOT_FOUND)
-    {
+    if (ret == ID_NOT_FOUND) {
         ret = mm->CreateHeap(heap_pool_id, heap_size);
-        if (ret!=NO_ERROR)
+        if (ret != NO_ERROR)
             exit(1);
     }
 
     // create a shelf for communication among processes
     // use the FreeLists
     std::cout << "Init: Creating the communication shelf..." << std::endl;
-    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
+    std::string comm_shelf_file =
+        std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
     shelf = new ShelfFile(comm_shelf_file);
-    if (shelf->Exist()==true)
-    {
+    if (shelf->Exist() == true) {
         shelf->Destroy();
     }
     size_t list_count = 1;
-    ret = shelf->Create(S_IRUSR|S_IWUSR, comm_size);
-    if (ret!=NO_ERROR)
+    ret = shelf->Create(S_IRUSR | S_IWUSR, comm_size);
+    if (ret != NO_ERROR)
         exit(1);
     ret = shelf->Open(O_RDWR);
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
-    ret = shelf->Map(NULL, comm_size, PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address);
-    if (ret!=NO_ERROR)
+    ret = shelf->Map(NULL, comm_size, PROT_READ | PROT_WRITE, MAP_SHARED, 0,
+                     (void **)&address);
+    if (ret != NO_ERROR)
         exit(1);
     fam_registered = true;
 
     comm = new FreeLists(address, comm_size);
     ret = comm->Create(list_count);
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
 
-    if (comm!=NULL)
+    if (comm != NULL)
         delete comm;
 
-    if (fam_registered == true)
-    {
+    if (fam_registered == true) {
         shelf->Unmap(address, comm_size);
         shelf->Close();
     }
 
-    if (shelf!=NULL)
+    if (shelf != NULL)
         delete shelf;
 
-    if (heap!=NULL)
+    if (heap != NULL)
         delete heap;
 
-    if (ret==NO_ERROR)
+    if (ret == NO_ERROR)
         return 0;
     else
         return 1;
 }
 
-int Cleanup()
-{
+int Cleanup() {
     ResetNVMM();
     return 0;
 }
 
-int RunA()
-{
+int RunA() {
     ErrorCode ret = NO_ERROR;
     bool fam_registered = false;
 
     ShelfFile *shelf = NULL;
-    void* address = NULL;
+    void *address = NULL;
     FreeLists *comm = NULL;
     MemoryManager *mm = NULL;
     Heap *heap = NULL;
@@ -170,91 +167,89 @@ int RunA()
     ShelfId my_shelf_id;
 
     // open the comm
-    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
+    std::string comm_shelf_file =
+        std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
     shelf = new ShelfFile(comm_shelf_file);
     ret = shelf->Open(O_RDWR);
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
-    ret = shelf->Map(NULL, shelf->Size(), PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address);
-    if (ret!=NO_ERROR)
+    ret = shelf->Map(NULL, shelf->Size(), PROT_READ | PROT_WRITE, MAP_SHARED, 0,
+                     (void **)&address);
+    if (ret != NO_ERROR)
         exit(1);
     fam_registered = true;
 
     comm = new FreeLists(address, shelf->Size());
     ret = comm->Open();
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
 
     // open the heap
     mm = MemoryManager::GetInstance();
     ret = mm->FindHeap(heap_pool_id, &heap);
-    if (ret!=NO_ERROR || heap == NULL)
+    if (ret != NO_ERROR || heap == NULL)
         exit(1);
 
     ret = heap->Open();
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
 
     // trying to allocate 512MB
-    std::cout << "Process A: Opened heap (" << heap_size/1024/1024 << " MB)" << std::endl;
+    std::cout << "Process A: Opened heap (" << heap_size / 1024 / 1024 << " MB)"
+              << std::endl;
     int count = 2;
-    int i=0;
-    do
-    {
-        std::cout << "Process A: Allocating " << alloc_unit/1024/1024 << " MB " << std::endl;
+    int i = 0;
+    do {
+        std::cout << "Process A: Allocating " << alloc_unit / 1024 / 1024
+                  << " MB " << std::endl;
         ptr = heap->Alloc(alloc_unit);
-        if (ptr.IsValid() == false)
-        {
+        if (ptr.IsValid() == false) {
             std::cout << "Process A: Allocation failed" << std::endl;
             usleep(500000);
-        }
-        else
-        {
-            std::cout << "Process A: Allocation suceeded; ptr " << ptr << std::endl;
-            if (i==0)
-            {
-                std::cout << "Process A: Sending pointer " << ptr << " to Process B" << std::endl;
+        } else {
+            std::cout << "Process A: Allocation suceeded; ptr " << ptr
+                      << std::endl;
+            if (i == 0) {
+                std::cout << "Process A: Sending pointer " << ptr
+                          << " to Process B" << std::endl;
                 ret = comm->PutPointer(0, ptr);
                 (ret == NO_ERROR);
             }
             i++;
         }
-    }
-    while(i<count);
+    } while (i < count);
 
     // close the heap
     ret = heap->Close();
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
 
-    if (comm!=NULL)
+    if (comm != NULL)
         delete comm;
 
-    if (fam_registered == true)
-    {
+    if (fam_registered == true) {
         shelf->Unmap(address, shelf->Size());
         shelf->Close();
     }
 
-    if (shelf!=NULL)
+    if (shelf != NULL)
         delete shelf;
 
-    if (heap!=NULL)
+    if (heap != NULL)
         delete heap;
 
-    if (ret==NO_ERROR)
+    if (ret == NO_ERROR)
         return 0;
     else
         return 1;
 }
 
-int RunB()
-{
+int RunB() {
     ErrorCode ret = NO_ERROR;
     bool fam_registered = false;
 
     ShelfFile *shelf = NULL;
-    void* address = NULL;
+    void *address = NULL;
     FreeLists *comm = NULL;
     MemoryManager *mm = NULL;
     Heap *heap = NULL;
@@ -263,73 +258,74 @@ int RunB()
     ShelfId my_shelf_id;
 
     // open the comm
-    std::string comm_shelf_file = std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
+    std::string comm_shelf_file =
+        std::string(SHELF_BASE_DIR) + "/" + SHELF_USER + "_NVMM_COMM";
     shelf = new ShelfFile(comm_shelf_file);
     ret = shelf->Open(O_RDWR);
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
-    ret = shelf->Map(NULL, shelf->Size(), PROT_READ|PROT_WRITE, MAP_SHARED, 0, (void**)&address);
-    if (ret!=NO_ERROR)
+    ret = shelf->Map(NULL, shelf->Size(), PROT_READ | PROT_WRITE, MAP_SHARED, 0,
+                     (void **)&address);
+    if (ret != NO_ERROR)
         exit(1);
     fam_registered = true;
 
     comm = new FreeLists(address, shelf->Size());
     ret = comm->Open();
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
 
     // open the heap
     mm = MemoryManager::GetInstance();
     ret = mm->FindHeap(heap_pool_id, &heap);
-    if (ret!=NO_ERROR || heap == NULL)
+    if (ret != NO_ERROR || heap == NULL)
         exit(1);
 
     ret = heap->Open();
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
 
     // Remote free
-    std::cout << "Process B: Opened heap (" << heap_size/1024/1024 << " MB)" << std::endl;
-    while (comm->GetPointer(0, ptr) != NO_ERROR)
-    {
+    std::cout << "Process B: Opened heap (" << heap_size / 1024 / 1024 << " MB)"
+              << std::endl;
+    while (comm->GetPointer(0, ptr) != NO_ERROR) {
         usleep(5000);
     }
     sleep(2);
-    std::cout << "Process B: Received ptr " << ptr << " from Process A" << std::endl;
+    std::cout << "Process B: Received ptr " << ptr << " from Process A"
+              << std::endl;
     std::cout << "Process B: Freed ptr " << ptr << std::endl;
     heap->Free(ptr);
 
     // close the heap
     ret = heap->Close();
-    if (ret!=NO_ERROR)
+    if (ret != NO_ERROR)
         exit(1);
 
-    if (comm!=NULL)
+    if (comm != NULL)
         delete comm;
 
-    if (fam_registered == true)
-    {
+    if (fam_registered == true) {
         shelf->Unmap(address, shelf->Size());
         shelf->Close();
     }
 
-    if (shelf!=NULL)
+    if (shelf != NULL)
         delete shelf;
 
-    if (heap!=NULL)
+    if (heap != NULL)
         delete heap;
 
-    if (ret==NO_ERROR)
+    if (ret == NO_ERROR)
         return 0;
     else
         return 1;
 }
 
-int main(int argc, char **argv)
-{
-    if (argc!=2)
-    {
-        std::cout << "Usage: ./" << argv[0] << " init/cleanup/runA/runB" << std::endl;
+int main(int argc, char **argv) {
+    if (argc != 2) {
+        std::cout << "Usage: ./" << argv[0] << " init/cleanup/runA/runB"
+                  << std::endl;
         exit(1);
     }
 
@@ -337,20 +333,13 @@ int main(int argc, char **argv)
     nvmm::init_log(nvmm::fatal, "mm.log");
 
     std::string cmd(argv[1]);
-    if (cmd == "init")
-    {
+    if (cmd == "init") {
         return Init();
-    }
-    else if (cmd == "cleanup")
-    {
+    } else if (cmd == "cleanup") {
         return Cleanup();
-    }
-    else if (cmd == "runA")
-    {
+    } else if (cmd == "runA") {
         return RunA();
-    }
-    else if (cmd == "runB")
-    {
+    } else if (cmd == "runB") {
         return RunB();
     }
 }

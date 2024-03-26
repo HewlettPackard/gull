@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -352,10 +352,9 @@ ErrorCode ShelfHeap::Unmap(Offset offset, void *mapped_addr, size_t size) {
     size_t aligned_size = aligned_end - aligned_start;
     assert(aligned_size % page_size == 0);
     void *aligned_addr = (void *)((char *)mapped_addr - offset % page_size);
-    LOG(trace) << "UnmapPointer: path "
-               << " offset " << aligned_start << " size " << aligned_size
-               << " aligned ptr " << (void *)aligned_addr << " input ptr "
-               << (void *)mapped_addr;
+    LOG(trace) << "UnmapPointer: path " << " offset " << aligned_start
+               << " size " << aligned_size << " aligned ptr "
+               << (void *)aligned_addr << " input ptr " << (void *)mapped_addr;
     return ShelfFile::Unmap(aligned_addr, aligned_size, false);
 }
 

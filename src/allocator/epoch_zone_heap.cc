@@ -123,10 +123,10 @@ inline size_t header_size_round_up() {
 
 EpochZoneHeap::EpochZoneHeap(PoolId pool_id)
     : gh_{NULL}, pool_id_{pool_id}, pool_{pool_id}, rmb_addr_{NULL},
-      rmb_size_{0}, rmb_{NULL}, region_{NULL},
-      mapped_addr_{NULL}, header_{NULL}, is_open_{false}, is_invalid_{false},
-      no_bgthread_{false}, fast_alloc_{0}, cleaner_start_{false},
-      cleaner_stop_{false}, cleaner_running_{false} {}
+      rmb_size_{0}, rmb_{NULL}, region_{NULL}, mapped_addr_{NULL},
+      header_{NULL}, is_open_{false}, is_invalid_{false}, no_bgthread_{false},
+      fast_alloc_{0}, cleaner_start_{false}, cleaner_stop_{false},
+      cleaner_running_{false} {}
 
 EpochZoneHeap::~EpochZoneHeap() {
     if (IsOpen() == true) {
@@ -156,7 +156,7 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
 
         // If shelf_size is greater than MAX_ZONE_SIZE return error
         if (shelf_size > MAX_ZONE_SIZE) {
-          return HEAP_CREATE_FAILED;
+            return HEAP_CREATE_FAILED;
         }
 
         // create an empty pool
@@ -175,14 +175,15 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
         shelf_idx = kHeaderIdx;
         header_size_ =
             get_header_size_from_size(shelf_size, min_alloc_size, shelf_idx);
-        ret = pool_.AddShelf(shelf_idx,
-                             [this](ShelfFile *shelf, size_t shelf_size) {
-                                 ShelfRegion shelf_region(shelf->GetPath());
-                                 // TODO: this should be
-                                 // shelf_size/min_obj_size*zone_entry_size
-                                 return shelf_region.Create(header_size_);
-                             },
-                             false, mode);
+        ret = pool_.AddShelf(
+            shelf_idx,
+            [this](ShelfFile *shelf, size_t shelf_size) {
+                ShelfRegion shelf_region(shelf->GetPath());
+                // TODO: this should be
+                // shelf_size/min_obj_size*zone_entry_size
+                return shelf_region.Create(header_size_);
+            },
+            false, mode);
         if (ret != NO_ERROR) {
             (void)pool_.Close(false);
             return HEAP_CREATE_FAILED;
@@ -234,14 +235,14 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
             fast_alloc_ = 1;
         }
         header_size_ = header_size_ - reserved;
-        ret = pool_.AddShelf(shelf_idx,
-                             [this](ShelfFile *shelf, size_t shelf_size) {
-                                 ShelfHeap shelf_heap(shelf->GetPath());
-                                 return shelf_heap.Create(
-                                     shelf_size, header_[0], header_size_,
-                                     min_obj_size_, fast_alloc_);
-                             },
-                             false, mode);
+        ret = pool_.AddShelf(
+            shelf_idx,
+            [this](ShelfFile *shelf, size_t shelf_size) {
+                ShelfHeap shelf_heap(shelf->GetPath());
+                return shelf_heap.Create(shelf_size, header_[0], header_size_,
+                                         min_obj_size_, fast_alloc_);
+            },
+            false, mode);
         if (ret != NO_ERROR) {
             // unmap and close the region
             ret = region_->Unmap(mapped_addr_[shelf_num],
@@ -293,8 +294,8 @@ ErrorCode EpochZoneHeap::Create(size_t shelf_size, size_t min_alloc_size,
 //    - return NO_ERROR.
 //
 // 2. The output is new shelf index which is optional. If the new_shelf_idx
-// pointer is not NULL, 	  the new shelf index is assigned to this pointer. By
-// default the output pointer is set to NULL.
+// pointer is not NULL, 	  the new shelf index is assigned to this
+// pointer. By default the output pointer is set to NULL.
 //
 // 3. Zone has a restriction that every shelf should be a power of 2.
 //    So convert the size to next power of 2.
@@ -303,7 +304,7 @@ ErrorCode EpochZoneHeap::Resize(size_t size, ShelfIndex *new_shelf_idx) {
     TRACE();
 
     if (size > MAX_ZONE_SIZE) {
-      return HEAP_RESIZE_FAILED;
+        return HEAP_RESIZE_FAILED;
     }
 
     // TODO: Currently resize can be performed only on open heap
@@ -417,15 +418,15 @@ ErrorCode EpochZoneHeap::Resize(size_t size, ShelfIndex *new_shelf_idx) {
         }
     }
     // Create new shelf
-    ret = pool_.AddShelf(shelf_idx,
-                         [this](ShelfFile *shelf, size_t shelf_size) {
-                             ShelfHeap shelf_heap(shelf->GetPath());
-                             return shelf_heap.Create(
-                                 shelf_size_for_create_,
-                                 header_[shelf_id_for_create_ - 1],
-                                 header_size_, min_obj_size_, fast_alloc_);
-                         },
-                         false, perm);
+    ret = pool_.AddShelf(
+        shelf_idx,
+        [this](ShelfFile *shelf, size_t shelf_size) {
+            ShelfHeap shelf_heap(shelf->GetPath());
+            return shelf_heap.Create(shelf_size_for_create_,
+                                     header_[shelf_id_for_create_ - 1],
+                                     header_size_, min_obj_size_, fast_alloc_);
+        },
+        false, perm);
     if (ret != NO_ERROR) {
         fam_atomic_u64_write(&gh_->op_in_progress, 0);
         region_->Unmap(mapped_addr_[shelf_num], new_header_size);
@@ -602,12 +603,12 @@ ErrorCode EpochZoneHeap::Destroy() {
 
         // Unmap and close the region
         (void)region_->Unmap(
-              gh_, round_up(sizeof(struct GlobalHeader), kCacheLineSize));
+            gh_, round_up(sizeof(struct GlobalHeader), kCacheLineSize));
         ret = region_->Close();
         if (ret != NO_ERROR) {
             return HEAP_DESTROY_FAILED;
         }
-        delete region_;   
+        delete region_;
 
         std::string path;
         for (int shelf_num = 0; shelf_num < total_data_shelfs; shelf_num++) {
@@ -759,9 +760,9 @@ ErrorCode EpochZoneHeap::Open(int flags) {
     is_open_ = true;
 
     // If No Background thread flag specified, return without spawning threads
-    if(flags & NVMM_NO_BG_THREAD){ 
-       no_bgthread_ = true;
-       return NO_ERROR;
+    if (flags & NVMM_NO_BG_THREAD) {
+        no_bgthread_ = true;
+        return NO_ERROR;
     }
 
     // start the cleaner thread
@@ -1447,29 +1448,31 @@ void EpochZoneHeap::Stats() {
         rmb_[shelf_num]->Stats();
 }
 
-/* 
+/*
  * Offlinefree will free delayed free items from all the epoch queues.
  * It parses queues from all the shelfs.
  *
- * Note : This doesnt take epochOp lock, operate with care. 
- * It has to be called only when user is certain that all the items can be 
+ * Note : This doesnt take epochOp lock, operate with care.
+ * It has to be called only when user is certain that all the items can be
  * freed.
  */
 void EpochZoneHeap::OfflineFree() {
     ASSERT_IS_OPEN();
-    OpenNewShelfs();    
-    for (int shelf_num = 0; shelf_num < (int)total_mapped_shelfs_; shelf_num++) {
-         for(int e = 0; e < kListCnt; e++) {
-             while (1) {
-                   Offset offset = global_list_[shelf_num][e].pop(
-                      bitmap_start_[shelf_num]) * min_obj_size_;
-                   if (offset == 0)
-                      break;
-                   // TODO: a crash here will leak memory
-                   LOG(trace) << " freeing block [" << offset << "]";
-                   rmb_[shelf_num]->Free(offset);
+    OpenNewShelfs();
+    for (int shelf_num = 0; shelf_num < (int)total_mapped_shelfs_;
+         shelf_num++) {
+        for (int e = 0; e < kListCnt; e++) {
+            while (1) {
+                Offset offset =
+                    global_list_[shelf_num][e].pop(bitmap_start_[shelf_num]) *
+                    min_obj_size_;
+                if (offset == 0)
+                    break;
+                // TODO: a crash here will leak memory
+                LOG(trace) << " freeing block [" << offset << "]";
+                rmb_[shelf_num]->Free(offset);
             }
-         }
+        }
     }
 }
 

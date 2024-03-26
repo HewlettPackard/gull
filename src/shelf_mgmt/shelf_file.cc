@@ -317,16 +317,16 @@ ErrorCode ShelfFile::Unmap(void *mapped_addr, bool unregister) {
         ShelfManager::Lock();
         addr = ShelfManager::FindAndCloseShelf(shelf_id_);
         if (addr == NULL) {
-          addr = ShelfManager::UnregisterShelf(shelf_id_);
-          needs_unmap = true;
+            addr = ShelfManager::UnregisterShelf(shelf_id_);
+            needs_unmap = true;
         }
         assert(addr == mapped_addr);
         ShelfManager::Unlock();
         if (needs_unmap == false)
-          return NO_ERROR;
+            return NO_ERROR;
         else {
-          size_t size = Size();
-          return Unmap(mapped_addr, size, true);
+            size_t size = Size();
+            return Unmap(mapped_addr, size, true);
         }
     }
 }

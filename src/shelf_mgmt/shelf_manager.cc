@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -47,7 +47,8 @@ namespace nvmm {
  * 3] whether the mapped region is valid
  **/
 std::unordered_map<ShelfId, std::tuple<void *, size_t, bool, int>,
-                   ShelfId::Hash, ShelfId::Equal> ShelfManager::map_;
+                   ShelfId::Hash, ShelfId::Equal>
+    ShelfManager::map_;
 std::map<void *, std::tuple<ShelfId, size_t, bool>> ShelfManager::reverse_map_;
 std::mutex ShelfManager::map_mutex_;
 
@@ -92,42 +93,42 @@ void *ShelfManager::UnregisterShelf(ShelfId shelf_id) {
 }
 
 void *ShelfManager::FindAndOpenShelf(ShelfId shelf_id) {
-  auto result = map_.find(shelf_id);
-  if (result == map_.end()) {
-    LOG(trace) << "LookupShelf: mapping not found";
-    return NULL;
-  } else {
-    LOG(trace) << "LookupShelf: mapping found";
-    // return NULL if the shelf is invalid
-    if (!std::get<2>(result->second)) {
-      return NULL;
+    auto result = map_.find(shelf_id);
+    if (result == map_.end()) {
+        LOG(trace) << "LookupShelf: mapping not found";
+        return NULL;
+    } else {
+        LOG(trace) << "LookupShelf: mapping found";
+        // return NULL if the shelf is invalid
+        if (!std::get<2>(result->second)) {
+            return NULL;
+        }
+        result->second = std::make_tuple(
+            std::get<0>(result->second), std::get<1>(result->second),
+            std::get<2>(result->second), std::get<3>(result->second) + 1);
+        return std::get<0>(result->second);
     }
-    result->second = std::make_tuple(
-        std::get<0>(result->second), std::get<1>(result->second),
-        std::get<2>(result->second), std::get<3>(result->second) + 1);
-    return std::get<0>(result->second);
-  }
 }
 
 void *ShelfManager::FindAndCloseShelf(ShelfId shelf_id) {
-  auto result = map_.find(shelf_id);
-  if (result == map_.end()) {
-    LOG(trace) << "LookupShelf: mapping not found";
-    return NULL;
-  } else {
-    LOG(trace) << "LookupShelf: mapping found";
-    // return NULL if the shelf is invalid
-    if (!std::get<2>(result->second)) {
-      return NULL;
+    auto result = map_.find(shelf_id);
+    if (result == map_.end()) {
+        LOG(trace) << "LookupShelf: mapping not found";
+        return NULL;
+    } else {
+        LOG(trace) << "LookupShelf: mapping found";
+        // return NULL if the shelf is invalid
+        if (!std::get<2>(result->second)) {
+            return NULL;
+        }
+        result->second = std::make_tuple(
+            std::get<0>(result->second), std::get<1>(result->second),
+            std::get<2>(result->second), std::get<3>(result->second) - 1);
+        if (std::get<3>(result->second) == 0)
+            return NULL;
+        else
+            return std::get<0>(result->second);
     }
-    result->second = std::make_tuple(
-        std::get<0>(result->second), std::get<1>(result->second),
-        std::get<2>(result->second), std::get<3>(result->second) - 1);
-    if (std::get<3>(result->second) == 0)
-      return NULL;
-    else
-      return std::get<0>(result->second);
-  }
 }
 
 void *ShelfManager::LookupShelf(ShelfId shelf_id) {
@@ -215,9 +216,9 @@ ErrorCode ShelfManager::MarkInvalid(ShelfId shelf_id) {
 
     // Mark the shelf invalid if not marked already
     if (ret != map_.end() && std::get<2>(ret->second)) {
-      ret->second =
-          std::make_tuple(std::get<0>(ret->second), std::get<1>(ret->second),
-                          false, std::get<3>(ret->second));
+        ret->second =
+            std::make_tuple(std::get<0>(ret->second), std::get<1>(ret->second),
+                            false, std::get<3>(ret->second));
         auto reverse_result = reverse_map_.find(std::get<0>(ret->second));
 
         if (reverse_result != reverse_map_.end() &&

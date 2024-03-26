@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -34,31 +34,28 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-
 namespace nvmm {
 
-
 typedef pid_t ParticipantID;
-
 
 /* ParticipantManager manages participant processes.
    getSelfID: gets the unique id of the calling participant.
    terminate: kills the target participant.
 */
 class ParticipantManager {
-public:
+  public:
     // Gets the unique id of the calling participant
-    static ParticipantID get_self_id(); 
+    static ParticipantID get_self_id();
 
     // Checks if a given participant is alive
-    static bool is_alive(ParticipantID pid); 
+    static bool is_alive(ParticipantID pid);
 
     // This call terminates the participant whose id is pid.
     // The pid must be a valid id.
-    // The call is idempotent. If the target pid is already killed, the call acts as nop.
-    static void terminate(ParticipantID pid); 
+    // The call is idempotent. If the target pid is already killed, the call
+    // acts as nop.
+    static void terminate(ParticipantID pid);
 };
-
 
 } // end namespace nvmm
 

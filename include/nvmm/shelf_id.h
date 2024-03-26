@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -26,136 +26,118 @@
 #ifndef _NVMM_SHELF_ID_H_
 #define _NVMM_SHELF_ID_H_
 
-#include <iostream>
-#include <cstdint>
 #include <assert.h> // assert and static_assert
+#include <cstdint>
 #include <functional> // std::hash
+#include <iostream>
 
-namespace nvmm{
-    
+namespace nvmm {
+
 // Shelf ID consists of Pool ID and Shelf Index (with in a pool)
 // ShelfIdT is the internal storage type of the shelf id
-// PoolIdT/ShelfIndexT is the external type of pool id/shelf index, whose size may be bigger than PoolIdTSize/ShelfIndexTSize
-// ShelfIdTSize/PoolIdTSize/ShelfIndexTSize is the number of bits of ShelfIdT/PoolIdT/ShelfIndexT
-template<class ShelfIdT, size_t ShelfIdTSize, class PoolIdT, size_t PoolIdTSize, class ShelfIndexT, size_t ShelfIndexTSize>
-class ShelfIdClass
-{
-    static_assert(sizeof(ShelfIdT)*8 >= ShelfIdTSize, "Invalid ShelfIdT");
-    static_assert(sizeof(PoolIdT)*8 >= PoolIdTSize, "Invalid PoolIdT");
-    static_assert(sizeof(ShelfIndexT)*8 >= ShelfIndexTSize, "Invalid ShelfIndexT");
-    static_assert(PoolIdTSize + ShelfIndexTSize <= ShelfIdTSize, "Invalid sizes");
-    
-public:
+// PoolIdT/ShelfIndexT is the external type of pool id/shelf index, whose size
+// may be bigger than PoolIdTSize/ShelfIndexTSize
+// ShelfIdTSize/PoolIdTSize/ShelfIndexTSize is the number of bits of
+// ShelfIdT/PoolIdT/ShelfIndexT
+template <class ShelfIdT, size_t ShelfIdTSize, class PoolIdT,
+          size_t PoolIdTSize, class ShelfIndexT, size_t ShelfIndexTSize>
+class ShelfIdClass {
+    static_assert(sizeof(ShelfIdT) * 8 >= ShelfIdTSize, "Invalid ShelfIdT");
+    static_assert(sizeof(PoolIdT) * 8 >= PoolIdTSize, "Invalid PoolIdT");
+    static_assert(sizeof(ShelfIndexT) * 8 >= ShelfIndexTSize,
+                  "Invalid ShelfIndexT");
+    static_assert(PoolIdTSize + ShelfIndexTSize <= ShelfIdTSize,
+                  "Invalid sizes");
+
+  public:
     // invalid shelf id: pool id == 0 && shelf index == 0
-    static ShelfIdT const kInvalidShelfId = 0; 
+    static ShelfIdT const kInvalidShelfId = 0;
 
     // max pool count and shelf count per pool
-    static PoolIdT const kMaxPoolCount = 1UL<<14;
-    static ShelfIndexT const kMaxShelfCount = 1UL<<7;
-    
+    static PoolIdT const kMaxPoolCount = 1UL << 14;
+    static ShelfIndexT const kMaxShelfCount = 1UL << 7;
+
     // Total number of bits used for PoolId + ShelfId
     static uint8_t const kPoolIdShelfIdbits = 24;
 
-    ShelfIdClass()
-        : shelf_id_{kInvalidShelfId}
-    {
-    }
+    ShelfIdClass() : shelf_id_{kInvalidShelfId} {}
 
-    ShelfIdClass(ShelfIdT shelf_id)
-        : shelf_id_{shelf_id}
-    {
-    }
-    
+    ShelfIdClass(ShelfIdT shelf_id) : shelf_id_{shelf_id} {}
+
     ShelfIdClass(PoolIdT pool_id, ShelfIndexT shelf_idx)
-        : shelf_id_{EncodeShelfId(pool_id, shelf_idx)}
-    {
-        assert(pool_id<kMaxPoolCount && shelf_idx<kMaxShelfCount);        
+        : shelf_id_{EncodeShelfId(pool_id, shelf_idx)} {
+        assert(pool_id < kMaxPoolCount && shelf_idx < kMaxShelfCount);
     }
 
-    ~ShelfIdClass()
-    {
+    ~ShelfIdClass() {}
+
+    operator uint64_t() const { return (uint64_t)shelf_id_; }
+
+    inline bool IsValid() const {
+        return (GetPoolId() < kMaxPoolCount) &&
+               (GetShelfIndex() < kMaxShelfCount) &&
+               (shelf_id_ != kInvalidShelfId);
     }
 
+    inline PoolIdT GetPoolId() const { return DecodePoolId(shelf_id_); }
 
-    operator uint64_t() const
-    {
-	return (uint64_t)shelf_id_;
-    }
-
-    inline bool IsValid() const
-    {
-        return
-            (GetPoolId()<kMaxPoolCount) &&
-            (GetShelfIndex()<kMaxShelfCount) && (shelf_id_ != kInvalidShelfId);
-    }
-    
-    inline PoolIdT GetPoolId() const
-    {
-        return DecodePoolId(shelf_id_);
-    }
-
-    inline ShelfIndexT GetShelfIndex() const
-    {
+    inline ShelfIndexT GetShelfIndex() const {
         return DecodeShelfIndex(shelf_id_);
     }
 
-    inline ShelfIdT GetShelfId() const
-    {
-        return shelf_id_;
-    }
+    inline ShelfIdT GetShelfId() const { return shelf_id_; }
 
     // operators
-    friend std::ostream& operator<<(std::ostream& os, const ShelfIdClass& shelf_id)
-    {
-        os << "[" << ((uint64_t)shelf_id.GetPoolId()) << "_" << ((uint64_t)shelf_id.GetShelfIndex()) << "]";
+    friend std::ostream &operator<<(std::ostream &os,
+                                    const ShelfIdClass &shelf_id) {
+        os << "[" << ((uint64_t)shelf_id.GetPoolId()) << "_"
+           << ((uint64_t)shelf_id.GetShelfIndex()) << "]";
         return os;
     }
 
-    friend bool operator==(const ShelfIdClass &left, const ShelfIdClass &right)
-    {
+    friend bool operator==(const ShelfIdClass &left,
+                           const ShelfIdClass &right) {
         return left.shelf_id_ == right.shelf_id_;
-    }   
+    }
 
-    friend bool operator!=(const ShelfIdClass &left, const ShelfIdClass &right)
-    {
+    friend bool operator!=(const ShelfIdClass &left,
+                           const ShelfIdClass &right) {
         return !(left == right);
-    }   
+    }
 
     // hash and equal function for std::unordered_map<ShelfID, ...>
     struct Hash {
-        unsigned long operator()(const ShelfIdClass& key) const
-        {
+        unsigned long operator()(const ShelfIdClass &key) const {
             return std::hash<ShelfIdT>()(key.GetShelfId());
         }
     };
 
     struct Equal {
-        bool operator()(const ShelfIdClass& lhs, const ShelfIdClass& rhs) const {
+        bool operator()(const ShelfIdClass &lhs,
+                        const ShelfIdClass &rhs) const {
             return lhs.GetShelfId() == rhs.GetShelfId();
         }
     };
-    
-    
-private:
-    inline ShelfIdT EncodeShelfId(PoolIdT pool_id, ShelfIndexT shelf_idx) const
-    {
-        return (ShelfIdT)((((ShelfIdT)pool_id) << (ShelfIndexTSize)) + shelf_idx);
+
+  private:
+    inline ShelfIdT EncodeShelfId(PoolIdT pool_id,
+                                  ShelfIndexT shelf_idx) const {
+        return (ShelfIdT)((((ShelfIdT)pool_id) << (ShelfIndexTSize)) +
+                          shelf_idx);
     }
 
-    inline PoolIdT DecodePoolId(ShelfIdT shelf_id) const
-    {
+    inline PoolIdT DecodePoolId(ShelfIdT shelf_id) const {
         return (PoolIdT)(((ShelfIdT)shelf_id) >> (ShelfIndexTSize));
     }
 
-    inline ShelfIndexT DecodeShelfIndex(ShelfIdT shelf_id) const
-    {
-        return (ShelfIndexT)(((((ShelfIdT)1) << (ShelfIndexTSize)) - 1) & shelf_id);
+    inline ShelfIndexT DecodeShelfIndex(ShelfIdT shelf_id) const {
+        return (ShelfIndexT)(((((ShelfIdT)1) << (ShelfIndexTSize)) - 1) &
+                             shelf_id);
     }
-    
+
     ShelfIdT shelf_id_;
 };
 
-    
 // internal type of ShelfId
 using ShelfIdStorageType = uint32_t;
 
@@ -167,7 +149,7 @@ using ShelfIndex = uint8_t;
 
 // ShelfId: 24-bit shelf id with 16-bit as pool id and 8-bit as shelf index
 using ShelfId = ShelfIdClass<ShelfIdStorageType, 24, PoolId, 16, ShelfIndex, 8>;
-    
+
 } // namespace nvmm
 
 #endif

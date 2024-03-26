@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -47,27 +47,27 @@ namespace nvmm {
  **/
 struct ZoneEntryStack {
     // we access the following two fields atomically via 128-bit CAS:
-    uint64_t head __attribute__ ((aligned (16)));
-    uint64_t aba_counter;  // incremented each time head is written
+    uint64_t head __attribute__((aligned(16)));
+    uint64_t aba_counter; // incremented each time head is written
     //
-    // The ZoneEntryStack head (Freelist head) is of 16 bytes. The head of next 
-    // freelist level will be stacked at head + 16. Accessing of two freelist heads 
-    // can cause Cacheline contention. For a Cacheline size of 64 bytes, it can 
-    // contain four freelist heads in the same Cacheline. Add a padding to prevent 
-    // the Cacheline contention.
-    //  
-    char ZoneEntryStackPadding[kCacheLineSize-(sizeof(head)+sizeof(aba_counter))];
+    // The ZoneEntryStack head (Freelist head) is of 16 bytes. The head of next
+    // freelist level will be stacked at head + 16. Accessing of two freelist
+    // heads can cause Cacheline contention. For a Cacheline size of 64 bytes,
+    // it can contain four freelist heads in the same Cacheline. Add a padding
+    // to prevent the Cacheline contention.
+    //
+    char ZoneEntryStackPadding[kCacheLineSize -
+                               (sizeof(head) + sizeof(aba_counter))];
 
     // returns 0 if stack is empty
-    uint64_t pop (void *addr);
+    uint64_t pop(void *addr);
     void push(void *addr, uint64_t idx);
 
-private:
-    ZoneEntryStack(const ZoneEntryStack&);              // disable copying
-    ZoneEntryStack& operator=(const ZoneEntryStack&);   // disable assignment
+  private:
+    ZoneEntryStack(const ZoneEntryStack &);            // disable copying
+    ZoneEntryStack &operator=(const ZoneEntryStack &); // disable assignment
 };
 
-
-}
+} // namespace nvmm
 
 #endif

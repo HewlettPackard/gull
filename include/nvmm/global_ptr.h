@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -26,113 +26,90 @@
 #ifndef _NVMM_GLOBAL_PTR_H_
 #define _NVMM_GLOBAL_PTR_H_
 
-#include <cstdint>
-#include <assert.h>
 #include "nvmm/shelf_id.h"
+#include <assert.h>
+#include <cstdint>
 
-namespace nvmm{
+namespace nvmm {
 
 // GlobalPtr consists of two parts: shelf ID and offset
 // Shelf ID is usually assigned by the memory manager (or the user)
-// Offset is usually determined by the heap implementation, which is the offset into a shelf
-template<class GlobalPtrT, class ShelfIdT, class OffsetT>
-class GlobalPtrClass
-{
- public:
- GlobalPtrClass()
-     : global_ptr_{EncodeGlobalPtr(0, 0)}
-    {
+// Offset is usually determined by the heap implementation, which is the offset
+// into a shelf
+template <class GlobalPtrT, class ShelfIdT, class OffsetT>
+class GlobalPtrClass {
+  public:
+    GlobalPtrClass() : global_ptr_{EncodeGlobalPtr(0, 0)} {}
+
+    GlobalPtrClass(GlobalPtrT global_ptr) : global_ptr_{global_ptr} {}
+
+    GlobalPtrClass(ShelfIdT shelf_id, OffsetT offset)
+        : global_ptr_{EncodeGlobalPtr(shelf_id, offset)} {}
+
+    ~GlobalPtrClass() {}
+
+    operator uint64_t() const { return (uint64_t)global_ptr_; }
+
+    inline bool IsValid() const {
+        // return GetShelfId().IsValid() && IsValidOffset(GetOffset());
+        return global_ptr_ != 0;
     }
 
- GlobalPtrClass(GlobalPtrT global_ptr)
-     : global_ptr_{global_ptr}
-    {
-    }
-
- GlobalPtrClass(ShelfIdT shelf_id, OffsetT offset)
-     : global_ptr_{EncodeGlobalPtr(shelf_id, offset)}
-    {
-    }
-
-    ~GlobalPtrClass()
-    {
-
-    }
-
-    operator uint64_t() const
-    {
-	return (uint64_t)global_ptr_;
-    }
-
-    inline bool IsValid() const
-    {
-	//return GetShelfId().IsValid() && IsValidOffset(GetOffset());
-        return global_ptr_!=0;
-    }
-
-    inline static bool IsValidOffset(OffsetT offset)
-    {
-	return offset <= kMaxOffset;
+    inline static bool IsValidOffset(OffsetT offset) {
+        return offset <= kMaxOffset;
     }
 
     // TODO(yupu): expose GlobalPtrT type????
-    inline uint64_t ToUINT64() const
-    {
-	return (uint64_t)global_ptr_;
+    inline uint64_t ToUINT64() const { return (uint64_t)global_ptr_; }
+
+    inline ShelfIdT GetShelfId() const { return DecodeShelfId(global_ptr_); }
+
+    inline OffsetT GetOffset() const {
+        OffsetT offset = DecodeOffset(global_ptr_);
+        return offset;
     }
 
-    inline ShelfIdT GetShelfId() const
-    {
-	return DecodeShelfId(global_ptr_);
-    }
-
-    inline OffsetT GetOffset() const
-    {
-	OffsetT offset = DecodeOffset(global_ptr_);
-	return offset;
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const GlobalPtrClass& global_ptr)
-    {
-	os << "[" << (uint64_t)global_ptr.GetShelfId() << ":" << global_ptr.GetOffset() << "]";
-	// ShelfId shelf_id = global_ptr.GetShelfId();
-	// os << "[" << (uint64_t)shelf_id.GetPoolId() << "_" << (uint64_t)shelf_id.GetShelfIndex()
+    friend std::ostream &operator<<(std::ostream &os,
+                                    const GlobalPtrClass &global_ptr) {
+        os << "[" << (uint64_t)global_ptr.GetShelfId() << ":"
+           << global_ptr.GetOffset() << "]";
+        // ShelfId shelf_id = global_ptr.GetShelfId();
+        // os << "[" << (uint64_t)shelf_id.GetPoolId() << "_" <<
+        // (uint64_t)shelf_id.GetShelfIndex()
         //    << ":" << global_ptr.GetOffset() << "]";
-	return os;
+        return os;
     }
 
- private:
-    static int const kOffsetShift = (int)(sizeof(GlobalPtrT)-(ShelfIdT::kPoolIdShelfIdbits)/8)*8;
+  private:
+    static int const kOffsetShift =
+        (int)(sizeof(GlobalPtrT) - (ShelfIdT::kPoolIdShelfIdbits) / 8) * 8;
     static OffsetT const kMaxOffset = (((OffsetT)1) << kOffsetShift) - 1;
 
-
-    inline GlobalPtrT EncodeGlobalPtr(ShelfIdT shelf_id, OffsetT offset) const
-    {
-	return (((GlobalPtrT)shelf_id.GetShelfId()) << (kOffsetShift)) + offset;
+    inline GlobalPtrT EncodeGlobalPtr(ShelfIdT shelf_id, OffsetT offset) const {
+        return (((GlobalPtrT)shelf_id.GetShelfId()) << (kOffsetShift)) + offset;
     }
 
-    inline ShelfIdT DecodeShelfId(GlobalPtrT global_ptr) const
-    {
-	return ShelfIdT((ShelfIdStorageType)(global_ptr >> kOffsetShift));
+    inline ShelfIdT DecodeShelfId(GlobalPtrT global_ptr) const {
+        return ShelfIdT((ShelfIdStorageType)(global_ptr >> kOffsetShift));
     }
 
-    inline OffsetT DecodeOffset(GlobalPtrT global_ptr) const
-    {
-	OffsetT offset = (OffsetT)(((((GlobalPtrT)1) << (kOffsetShift)) - 1) & global_ptr);
-	return offset;
+    inline OffsetT DecodeOffset(GlobalPtrT global_ptr) const {
+        OffsetT offset =
+            (OffsetT)(((((GlobalPtrT)1) << (kOffsetShift)) - 1) & global_ptr);
+        return offset;
     }
 
     GlobalPtrT global_ptr_;
 };
 
 // internal type of GlobalPtr
- using GlobalPtrStorageType = uint64_t;
+using GlobalPtrStorageType = uint64_t;
 
- // Offset
- using Offset = uint64_t;
+// Offset
+using Offset = uint64_t;
 
- // GlobalPtr
- using GlobalPtr = GlobalPtrClass<GlobalPtrStorageType, ShelfId, Offset>;
+// GlobalPtr
+using GlobalPtr = GlobalPtrClass<GlobalPtrStorageType, ShelfId, Offset>;
 
 } // namespace nvmm
 

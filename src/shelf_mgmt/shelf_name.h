@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -26,12 +26,12 @@
 #ifndef _NVMM_SHELF_NAME_H_
 #define _NVMM_SHELF_NAME_H_
 
-//#include <sys/stat.h> // for S_IRUSR and S_IWUSR
-#include <string>
+// #include <sys/stat.h> // for S_IRUSR and S_IWUSR
 #include <sstream>
+#include <string>
 
-#include "nvmm/shelf_id.h"
 #include "common/config.h"
+#include "nvmm/shelf_id.h"
 
 namespace nvmm {
 
@@ -40,51 +40,45 @@ namespace nvmm {
 // shelf name = prefix + "_" + shelf_id + "_" + suffix
 // all shelf names share a common prefix: BASE_DIR/file_prefix. e.g. /lfs/Shelf
 // suffix is optional
-class ShelfName
-{
-public:
-    ShelfName(std::string base_dir = config.ShelfBase, std::string file_prefix = "Shelf")
-    { 
-        prefix_ = std::string(base_dir) + "/" + std::string(config.ShelfUser) + "_" + file_prefix;
+class ShelfName {
+  public:
+    ShelfName(std::string base_dir = config.ShelfBase,
+              std::string file_prefix = "Shelf") {
+        prefix_ = std::string(base_dir) + "/" + std::string(config.ShelfUser) +
+                  "_" + file_prefix;
     }
 
-    ~ShelfName()
-    {
-    }
+    ~ShelfName() {}
 
     // generate the full path name for the shelf, with one suffix
-    std::string Path(ShelfId shelf_id, std::string suffix1="", std::string suffix2="")
-    {
+    std::string Path(ShelfId shelf_id, std::string suffix1 = "",
+                     std::string suffix2 = "") {
         std::string pathname = prefix_ + "_" +
-            std::to_string(shelf_id.GetPoolId()) + "_" +
-            std::to_string(shelf_id.GetShelfIndex());
-        if (suffix1 != "")
-        {
+                               std::to_string(shelf_id.GetPoolId()) + "_" +
+                               std::to_string(shelf_id.GetShelfIndex());
+        if (suffix1 != "") {
             pathname = pathname + "_" + suffix1;
         }
-        if (suffix2 != "")
-        {
+        if (suffix2 != "") {
             pathname = pathname + "_" + suffix2;
         }
-        //assert(shelf_id == ToShelfId(pathname));
+        // assert(shelf_id == ToShelfId(pathname));
         return pathname;
     }
 
-    std::string Path(std::string shelf_id_str, std::string suffix1="", std::string suffix2="")
-    {
+    std::string Path(std::string shelf_id_str, std::string suffix1 = "",
+                     std::string suffix2 = "") {
         std::string pathname = prefix_ + "_" + shelf_id_str;
-        if (suffix1 != "")
-        {
+        if (suffix1 != "") {
             pathname = pathname + "_" + suffix1;
         }
-        if (suffix2 != "")
-        {
+        if (suffix2 != "") {
             pathname = pathname + "_" + suffix2;
         }
-        //assert(shelf_id == ToShelfId(pathname));
+        // assert(shelf_id == ToShelfId(pathname));
         return pathname;
     }
-    
+
     std::string prefix_; // all shelves share a common prefix
 };
 
