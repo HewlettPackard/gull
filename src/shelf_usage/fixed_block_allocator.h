@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -30,55 +30,50 @@
 #ifndef _NVMM_FIXED_BLOCK_ALLOCATOR_H_
 #define _NVMM_FIXED_BLOCK_ALLOCATOR_H_
 
-#include <stddef.h>
 #include "shelf_usage/smart_shelf.h"
+#include <stddef.h>
 
 namespace nvmm {
 
 class FixedBlockAllocator {
-public:
+  public:
     // may throw runtime_error
     FixedBlockAllocator(void *addr, size_t block_size,
-                        size_t user_metadata_size,
-                        size_t initial_pool_size, size_t max_pool_size);
+                        size_t user_metadata_size, size_t initial_pool_size,
+                        size_t max_pool_size);
     virtual ~FixedBlockAllocator() {}
 
+    void *user_metadata();
+    size_t user_metadata_size();
 
-    void*   user_metadata();
-    size_t  user_metadata_size();
-
-    size_t  size();        // size of our underlying shelf
-    size_t  block_size();
+    size_t size(); // size of our underlying shelf
+    size_t block_size();
     // maximum number of blocks that can be allocated at once:
     int64_t max_blocks();
 
-    SmartShelf_& get_underlying_shelf();    
+    SmartShelf_ &get_underlying_shelf();
 
     // returns 0 if no blocks are currently available
     Offset alloc();
     // [unsafe_]free(0) is a no-op
-    void     free       (Offset block);
+    void free(Offset block);
     // requires all writes to block block have already been persisted
-    void     unsafe_free(Offset block);
-
+    void unsafe_free(Offset block);
 
     // converting to and from local-address-space pointers
-    void*    from_Offset(Offset p); 
-    Offset to_Offset  (void*    p);
+    void *from_Offset(Offset p);
+    Offset to_Offset(void *p);
 
     // shortcut for from_Offset; does not work well on FixedBlockAllocator*:
     //   need (*fba)[ptr] for that case
-    void* operator[](Offset p) { return from_Offset(p); }
+    void *operator[](Offset p) { return from_Offset(p); }
 
+    FixedBlockAllocator(const FixedBlockAllocator &) = delete;
+    FixedBlockAllocator &operator=(const FixedBlockAllocator &) = delete;
 
-    FixedBlockAllocator(const FixedBlockAllocator&)            = delete;
-    FixedBlockAllocator& operator=(const FixedBlockAllocator&) = delete;
-
-
-protected:
+  protected:
     SmartShelf<struct _FBA_metadata> underlying_shelf;
 };
-
 
 /***************************************************************************/
 /*                                                                         */
@@ -86,14 +81,14 @@ protected:
 /*                                                                         */
 /***************************************************************************/
 
-inline void* FixedBlockAllocator::from_Offset(Offset p) {
+inline void *FixedBlockAllocator::from_Offset(Offset p) {
     return underlying_shelf.from_Offset(p);
 }
 
-inline Offset FixedBlockAllocator::to_Offset(void* p) {
+inline Offset FixedBlockAllocator::to_Offset(void *p) {
     return underlying_shelf.to_Offset(p);
 }
 
-}
+} // namespace nvmm
 
 #endif

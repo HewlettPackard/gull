@@ -27,19 +27,21 @@
 #ifndef NVMM_CONFIG_H
 #define NVMM_CONFIG_H
 
+#include <assert.h>
 #include <cstddef> // size_t
 #include <iostream>
-#include <assert.h>
 #include <string>
 
 namespace nvmm {
 
 class Config {
-public:
-    Config(std::string base=SHELF_BASE_DIR, std::string user=SHELF_USER)
+  public:
+    Config(std::string base = SHELF_BASE_DIR, std::string user = SHELF_USER)
         : ShelfBase(base), ShelfUser(user) {
-        if(base.empty()) ShelfBase = SHELF_BASE_DIR;
-        if(user.empty()) ShelfUser = SHELF_USER;
+        if (base.empty())
+            ShelfBase = SHELF_BASE_DIR;
+        if (user.empty())
+            ShelfUser = SHELF_USER;
         Setup();
     }
 
@@ -59,7 +61,7 @@ public:
     uint64_t PageSize;
 };
 
-//TODO: global instance for now
+// TODO: global instance for now
 extern Config config;
 
 } // namespace nvmm

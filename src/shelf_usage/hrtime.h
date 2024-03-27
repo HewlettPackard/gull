@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -28,10 +28,8 @@
 
 #include <time.h>
 
-
 namespace nvmm {
 namespace internal {
-
 
 typedef struct timespec HRTime;
 
@@ -41,14 +39,14 @@ static inline HRTime get_hrtime() {
     return ts;
 }
 
-static inline size_t diff_hrtime_ns(const HRTime& start, const HRTime& end) {
-    return (end.tv_sec - start.tv_sec)*1000000000LLU + end.tv_nsec - start.tv_nsec;
+static inline size_t diff_hrtime_ns(const HRTime &start, const HRTime &end) {
+    return (end.tv_sec - start.tv_sec) * 1000000000LLU + end.tv_nsec -
+           start.tv_nsec;
 }
 
-static inline size_t diff_hrtime_us(const HRTime& start, const HRTime& end) {
+static inline size_t diff_hrtime_us(const HRTime &start, const HRTime &end) {
     return diff_hrtime_ns(start, end) / 1000LLU;
 }
-
 
 } // end namespace internal
 } // end namespace nvmm

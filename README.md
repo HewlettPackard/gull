@@ -23,7 +23,7 @@ https://github.com/HewlettPackard/gull
 ## Maturity
 
 NVMM is still in alpha state. The basic functionalities are working, but performance is not
-optimized. 
+optimized.
 
 NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
  Emulation](https://github.com/HewlettPackard/mdc-toolkit/blob/master/guide-FAME.md)) systems.
@@ -49,7 +49,7 @@ NVMM runs on both NUMA and FAME ([Fabric-Attached Memory
   $ cd nvml
   $ make
   $ sudo make install
-  
+
   You can provide custom directory prefix for installation using DESTDIR variable. For example, to install to directory /opt
 
   $ sudo make install DESTDIR=/opt
@@ -263,7 +263,7 @@ the delayed free is called has finished. The memory manager maintains per-epoch 
 chunks, and the delayed free method puts a memory chunk into the corresponding per-epoch list. A
 background thread wakes up periodically and frees memory chunks in those per-epoch lists. The number
 of per-epoch free lists is bounded by mapping epochs to free lists in a round robin
-fashion. Examples using the delayed free APIs can be found in test/allocator/test_epoch_zone_heap.cc 
+fashion. Examples using the delayed free APIs can be found in test/allocator/test_epoch_zone_heap.cc
 
 
 ## Extension: Crash recovery and garbage collection

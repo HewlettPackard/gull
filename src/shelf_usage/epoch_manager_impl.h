@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -35,28 +35,26 @@
 
 #include "nvmm/epoch_manager.h"
 
-#include "shelf_usage/epoch_vector.h"
 #include "shelf_usage/dclcrwlock.h"
+#include "shelf_usage/epoch_vector.h"
 #include "shelf_usage/participant_manager.h"
 #include "shelf_usage/smart_shelf.h"
 
-
 namespace nvmm {
 
-class EpochManagerImpl
-{
-public:
+class EpochManagerImpl {
+  public:
     /**
-     * \brief Construct and initialize epoch manager 
+     * \brief Construct and initialize epoch manager
      *
-     * \details 
+     * \details
      * Grabs an epoch-counter slot in the global epoch vector
      */
     EpochManagerImpl(void *addr, bool may_create);
 
     /**
      * \brief Teardown epoch manager
-     * 
+     *
      * \details
      * Unregisters itself from the global epoch vector.
      */
@@ -71,9 +69,9 @@ public:
     /** Exit an epoch-protected critical region */
     void exit_critical();
 
-    /** 
-     * \brief Return whether there is at least one active epoch-protected 
-     * critical region 
+    /**
+     * \brief Return whether there is at least one active epoch-protected
+     * critical region
      *
      * \details
      * This check is inherently racy as the active region may end by the time
@@ -94,63 +92,60 @@ public:
 
     void register_failure_callback(EpochManagerCallback cb);
 
-    EpochManagerImpl(const EpochManagerImpl&)            = delete;
-    EpochManagerImpl& operator=(const EpochManagerImpl&) = delete;
+    EpochManagerImpl(const EpochManagerImpl &) = delete;
+    EpochManagerImpl &operator=(const EpochManagerImpl &) = delete;
 
     pid_t self_id() { return pid_; }
 
     void reset_vector();
 
-private:
+  private:
     /**
      * \brief Reports this epoch-manager's current view of the frontier
      *
      */
     void report_frontier();
 
-    /** 
+    /**
      * \brief Attempt to advance frontier epoch
      *
      * \details
-     * Succeeds if all participants are at the frontier epoch or the epoch 
+     * Succeeds if all participants are at the frontier epoch or the epoch
      * previous to the frontier.
-     * 
+     *
      * Not thread-safe
      */
     bool advance_frontier();
 
-private:
-    static const size_t POOL_SIZE             = 1024*1024; // bytes
-    static const size_t MAX_POOL_SIZE         = 1024*1024; // bytes
-    static const size_t MONITOR_INTERVAL_US   = 1000; //10;
-    static const size_t HEARTBEAT_INTERVAL_US = 1000; //10;
-    static const size_t TIMEOUT_US            = 1000000;
-    static const size_t DEBUG_INTERVAL_US     = 1000000;
+  private:
+    static const size_t POOL_SIZE = 1024 * 1024;      // bytes
+    static const size_t MAX_POOL_SIZE = 1024 * 1024;  // bytes
+    static const size_t MONITOR_INTERVAL_US = 1000;   // 10;
+    static const size_t HEARTBEAT_INTERVAL_US = 1000; // 10;
+    static const size_t TIMEOUT_US = 1000000;
+    static const size_t DEBUG_INTERVAL_US = 1000000;
 
     void monitor_thread_entry();
     void heartbeat_thread_entry();
 
-private:
-    SmartShelf<internal::_EpochVector>      metadata_pool_;      // internal pool storing epoch-manager metadata
-    ParticipantID            pid_;
-    internal::EpochVector*             epoch_vec_; 
+  private:
+    SmartShelf<internal::_EpochVector>
+        metadata_pool_; // internal pool storing epoch-manager metadata
+    ParticipantID pid_;
+    internal::EpochVector *epoch_vec_;
     internal::EpochVector::Participant epoch_participant_;
-    internal::DCLCRWLock               epoch_lock_;         // lock protecting local epoch advancement
-    pthread_mutex_t                    active_epoch_mutex_; // mutex protecting active epoch count
-    int                                active_epoch_count_;
-    std::thread                        monitor_thread_;
-    std::thread                        heartbeat_thread_;
-    std::atomic<bool>                  terminate_monitor_;
-    std::atomic<bool>                  terminate_heartbeat_;
-    int                                debug_level_;
-    struct timespec                    last_scan_time_;
-    EpochManagerCallback               cb_;
-    EpochCounter                       last_frontier_;
-
+    internal::DCLCRWLock epoch_lock_; // lock protecting local epoch advancement
+    pthread_mutex_t active_epoch_mutex_; // mutex protecting active epoch count
+    int active_epoch_count_;
+    std::thread monitor_thread_;
+    std::thread heartbeat_thread_;
+    std::atomic<bool> terminate_monitor_;
+    std::atomic<bool> terminate_heartbeat_;
+    int debug_level_;
+    struct timespec last_scan_time_;
+    EpochManagerCallback cb_;
+    EpochCounter last_frontier_;
 };
-
-
-
 
 } // end namespace nvmm
 

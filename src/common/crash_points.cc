@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -23,9 +23,9 @@
  *
  */
 
-#include <unordered_map>
-#include <string>
 #include <iostream>
+#include <string>
+#include <unordered_map>
 
 #include "crash_points.h"
 
@@ -36,7 +36,7 @@ std::unordered_map<std::string, bool> CrashPoints::locations_;
 void CrashPoints::CrashHere(std::string location) {
 #ifdef DEBUG
     auto found = locations_.find(location);
-    if (found!=locations_.end() && found->second == true) {
+    if (found != locations_.end() && found->second == true) {
         std::cout << "I'm going to crash at " << location << std::endl;
         exit(1);
     }
@@ -57,6 +57,5 @@ void CrashPoints::DisableCrashPoint(std::string location) {
 #endif
     return;
 }
-
 
 } // namespace nvmm

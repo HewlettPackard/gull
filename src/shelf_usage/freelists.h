@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -33,11 +33,11 @@
 #include "nvmm/global_ptr.h"
 #include "nvmm/shelf_id.h"
 
-namespace nvmm{
+namespace nvmm {
 
 class Stack;
 class FixedBlockAllocator;
-    
+
 /*
   freelists layout:
   - header
@@ -46,46 +46,37 @@ class FixedBlockAllocator;
     - size_t list_count;
   - Stack freelists[list_count];
   - fba
- */    
-class FreeLists
-{
-public:
-    FreeLists() = delete;   
+ */
+class FreeLists {
+  public:
+    FreeLists() = delete;
     // addr must be aligned to cacheline size
-    // avail_size is the available space in the shelf starting from addr    
-    FreeLists(void *addr, size_t avail_size); 
+    // avail_size is the available space in the shelf starting from addr
+    FreeLists(void *addr, size_t avail_size);
     ~FreeLists();
 
-    // after calling Create/Destroy, Size() will return the actual size of memory consumed by this
-    // data structure    
+    // after calling Create/Destroy, Size() will return the actual size of
+    // memory consumed by this data structure
     ErrorCode Create(size_t list_count);
     ErrorCode Destroy();
     bool Verify();
-    bool IsOpen() const
-    {
-        return is_open_;
-    }
-    size_t Size() const
-    {
-        return size_;
-    }
-    
+    bool IsOpen() const { return is_open_; }
+    size_t Size() const { return size_; }
+
     ErrorCode Open();
     ErrorCode Close();
 
-    // caller must make sure ptr is valid (i.e., same pool id, valid shelf index)
+    // caller must make sure ptr is valid (i.e., same pool id, valid shelf
+    // index)
     ErrorCode PutPointer(ShelfIndex shelf_idx, GlobalPtr ptr);
     ErrorCode GetPointer(ShelfIndex shelf_idx, GlobalPtr &ptr);
-    size_t Count() const
-    {
-        return list_count_;
-    }
-        
-private:
+    size_t Count() const { return list_count_; }
+
+  private:
     static uint64_t const kMagicNum = 373354787; // freelists
-    
+
     bool is_open_;
-    void *addr_; // the address this data structure is mapped to
+    void *addr_;  // the address this data structure is mapped to
     size_t size_; // size of the data structure in FAM
 
     size_t list_count_;

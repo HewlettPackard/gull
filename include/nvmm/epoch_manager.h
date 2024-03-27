@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -26,32 +26,30 @@
 #ifndef _NVMM_EPOCH_MANAGER_H_
 #define _NVMM_EPOCH_MANAGER_H_
 
+#include <functional>
+#include <memory>
 #include <stdint.h>
 #include <sys/types.h>
-#include <memory>
-#include <functional>
 
 #include "nvmm/error_code.h"
 
-namespace nvmm{
+namespace nvmm {
 
 /** Epoch Identifier */
 typedef int64_t EpochCounter;
 
 typedef std::function<void(pid_t)> EpochManagerCallback;
 
-class EpochManager
-{
-public:
-
+class EpochManager {
+  public:
     // there is only one instance of EpochManager in a process
     // return a pointer to the instance
     static EpochManager *GetInstance();
 
     // helper functions to make it work with fork
     // be careful that there may be other threads using this instance!
-    // before forking, stop all the threads; after forking, start all the threads
-    // both functions are not thread/process safe
+    // before forking, stop all the threads; after forking, start all the
+    // threads both functions are not thread/process safe
     void Stop();
     void Start();
 
@@ -91,31 +89,28 @@ public:
 
     void reset_vector();
 
- private:
-
+  private:
     EpochManager();
     ~EpochManager();
 
     class Impl_;
-    //std::unique_ptr<Impl_> pimpl_;
+    // std::unique_ptr<Impl_> pimpl_;
     Impl_ *pimpl_;
 };
 
 class EpochOp {
-public:
-    EpochOp(EpochManager* em);
+  public:
+    EpochOp(EpochManager *em);
     virtual ~EpochOp();
 
     EpochCounter reported_epoch();
 
+    EpochOp(const EpochOp &) = delete;
+    EpochOp &operator=(const EpochOp &) = delete;
 
-    EpochOp(const EpochOp&)            = delete;
-    EpochOp& operator=(const EpochOp&) = delete;
-
-private:
-    EpochManager* em_;
+  private:
+    EpochManager *em_;
 };
-
 
 } // namespace nvmm
 #endif

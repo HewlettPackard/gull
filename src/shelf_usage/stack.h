@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -33,14 +33,13 @@
 #include "nvmm/global_ptr.h"
 #include "shelf_usage/smart_shelf.h"
 
-
 namespace nvmm {
-    
+
 /**
  ** A very simple lock-free stack of blocks
- ** 
+ **
  ** Must be allocated in FAM.
- ** 
+ **
  ** The blocks pushed on the stack must be cache line aligned, at
  ** least a cache line long, and not accessed by anyone else while on
  ** the stack.  They must also all belong to the same Shelf, which must
@@ -49,22 +48,21 @@ namespace nvmm {
 struct Stack {
     // we access the following two fields atomically via 128-bit CAS:
     alignas(16) Offset head;
-    uint64_t  aba_counter;  // incremented each time head is written
+    uint64_t aba_counter; // incremented each time head is written
 
     // returns 0 if stack is empty
-    Offset pop (SmartShelf_& shelf);
-    void     push(SmartShelf_& shelf, Offset block);
+    Offset pop(SmartShelf_ &shelf);
+    void push(SmartShelf_ &shelf, Offset block);
 
     // returns 0 if stack is empty
-    Offset pop (void *addr);
-    void     push(void *addr, Offset block);
-    
-private:
-    Stack(const Stack&);              // disable copying
-    Stack& operator=(const Stack&);   // disable assignment
+    Offset pop(void *addr);
+    void push(void *addr, Offset block);
+
+  private:
+    Stack(const Stack &);            // disable copying
+    Stack &operator=(const Stack &); // disable assignment
 };
 
-
-}
+} // namespace nvmm
 
 #endif

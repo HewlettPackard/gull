@@ -53,12 +53,12 @@ class Heap {
     virtual void Free(GlobalPtr global_ptr) = 0;
 
     virtual GlobalPtr Alloc(EpochOp &op, size_t size) { return (GlobalPtr)0; };
-    virtual void Free(EpochOp &op, GlobalPtr global_ptr){};
-    virtual void Free(EpochOp &op, Offset offset){};
+    virtual void Free(EpochOp &op, GlobalPtr global_ptr) {};
+    virtual void Free(EpochOp &op, Offset offset) {};
 
     // Functions for Offset based free and alloc function
     virtual Offset AllocOffset(size_t size) { return 0; };
-    virtual void Free(Offset offset){};
+    virtual void Free(Offset offset) {};
 
     virtual ErrorCode Resize(size_t size, ShelfIndex *new_shelf_idx = NULL) = 0;
     virtual ErrorCode SetPermission(mode_t mode) = 0;
@@ -66,13 +66,13 @@ class Heap {
 
     virtual void *OffsetToLocal(Offset offset) { return NULL; };
     virtual size_t MinAllocSize() { return 0; };
-    virtual void Merge(){};
-    virtual void OfflineRecover(){};
-    virtual void OnlineRecover(){};
-    virtual void Stats(){};
+    virtual void Merge() {};
+    virtual void OfflineRecover() {};
+    virtual void OnlineRecover() {};
+    virtual void Stats() {};
     virtual size_t Size() { return 0; };
-    virtual void OfflineFree(){};
-    virtual void delayed_free_fn(){};
+    virtual void OfflineFree() {};
+    virtual void delayed_free_fn() {};
     virtual ErrorCode getStartAddress(int &numShelfs, void **&address,
                                       size_t *&Shelfsize) = 0;
 };

@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -37,10 +37,10 @@
 
 namespace nvmm {
 
-void Stack::push(SmartShelf_& shelf, Offset block) {
+void Stack::push(SmartShelf_ &shelf, Offset block) {
     assert(block != 0);
 
-    uint64_t* b = (uint64_t*) shelf[block];
+    uint64_t *b = (uint64_t *)shelf[block];
 
     uint64_t old[2], store[2], result[2];
     // would non-atomic reads be faster here?
@@ -49,12 +49,12 @@ void Stack::push(SmartShelf_& shelf, Offset block) {
         // would an atomic write be faster here?
         fam_atomic_u64_write(b, old[0]);
         //*b = old[0];
-        //pmem_persist(b, sizeof(uint64_t));
+        // pmem_persist(b, sizeof(uint64_t));
 
         store[0] = block;
         store[1] = old[1] + 1;
         fam_atomic_u128_compare_and_store(&head, old, store, result);
-        if (result[0]==old[0] && result[1]==old[1])
+        if (result[0] == old[0] && result[1] == old[1])
             return;
 
         old[0] = result[0];
@@ -62,7 +62,7 @@ void Stack::push(SmartShelf_& shelf, Offset block) {
     }
 }
 
-Offset Stack::pop(SmartShelf_& shelf) {
+Offset Stack::pop(SmartShelf_ &shelf) {
     uint64_t old[2], store[2], result[2];
     // would non-atomic reads be faster here?
     fam_atomic_u128_read(&head, old);
@@ -70,15 +70,15 @@ Offset Stack::pop(SmartShelf_& shelf) {
         Offset block = old[0];
         if (block == 0)
             break;
-        uint64_t* b = (uint64_t*) shelf[block];
+        uint64_t *b = (uint64_t *)shelf[block];
         // would an atomic read be faster here?
         Offset next = fam_atomic_u64_read(b);
-        //Offset next = *b;
+        // Offset next = *b;
 
         store[0] = next;
         store[1] = old[1] + 1;
         fam_atomic_u128_compare_and_store(&head, old, store, result);
-        if (result[0]==old[0] && result[1]==old[1])
+        if (result[0] == old[0] && result[1] == old[1])
             return block;
 
         old[0] = result[0];
@@ -91,9 +91,7 @@ Offset Stack::pop(SmartShelf_& shelf) {
 void Stack::push(void *addr, Offset block) {
     assert(block != 0);
 
-    uint64_t* b = (uint64_t*)(
-                            (char*)addr + block
-                            );
+    uint64_t *b = (uint64_t *)((char *)addr + block);
 
     uint64_t old[2], store[2], result[2];
     // would non-atomic reads be faster here?
@@ -102,12 +100,12 @@ void Stack::push(void *addr, Offset block) {
         // would an atomic write be faster here?
         fam_atomic_u64_write(b, old[0]);
         //*b = old[0];
-        //pmem_persist(b, sizeof(uint64_t));
+        // pmem_persist(b, sizeof(uint64_t));
 
         store[0] = block;
         store[1] = old[1] + 1;
         fam_atomic_u128_compare_and_store(&head, old, store, result);
-        if (result[0]==old[0] && result[1]==old[1])
+        if (result[0] == old[0] && result[1] == old[1])
             return;
 
         old[0] = result[0];
@@ -123,17 +121,15 @@ Offset Stack::pop(void *addr) {
         Offset block = old[0];
         if (block == 0)
             break;
-        uint64_t* b = (uint64_t*)(
-                                (char*)addr + block
-                                );
+        uint64_t *b = (uint64_t *)((char *)addr + block);
         // would an atomic read be faster here?
         Offset next = fam_atomic_u64_read(b);
-        //Offset next = *b;
+        // Offset next = *b;
 
         store[0] = next;
         store[1] = old[1] + 1;
         fam_atomic_u128_compare_and_store(&head, old, store, result);
-        if (result[0]==old[0] && result[1]==old[1])
+        if (result[0] == old[0] && result[1] == old[1])
             return block;
 
         old[0] = result[0];
@@ -143,5 +139,4 @@ Offset Stack::pop(void *addr) {
     return 0;
 }
 
-
-}
+} // namespace nvmm

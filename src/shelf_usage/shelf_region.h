@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -35,34 +35,32 @@
 
 namespace nvmm {
 
-class ShelfRegion
-{
-public:
+class ShelfRegion {
+  public:
     ShelfRegion() = delete;
     ShelfRegion(std::string pathname);
     ~ShelfRegion();
 
     ErrorCode Create(size_t size);
     ErrorCode Destroy();
-    ErrorCode Verify();    
+    ErrorCode Verify();
     ErrorCode Resize(size_t);
 
-    bool IsOpen() const
-    {
-        return is_open_;
-    }
-    
+    bool IsOpen() const { return is_open_; }
+
     ErrorCode Open(int flags);
     ErrorCode Close();
     size_t Size();
-    
-    ErrorCode Map(void *addr_hint, size_t length, int prot, int flags, loff_t offset, void **mapped_addr);
+
+    ErrorCode Map(void *addr_hint, size_t length, int prot, int flags,
+                  loff_t offset, void **mapped_addr);
     ErrorCode Unmap(void *mapped_addr, size_t length);
 
-    ErrorCode GetPermission(mode_t *mode);   
+    ErrorCode GetPermission(mode_t *mode);
     ErrorCode SetPermission(mode_t mode);
-private:
-    bool is_open_;    
+
+  private:
+    bool is_open_;
     ShelfFile shelf_;
 };
 

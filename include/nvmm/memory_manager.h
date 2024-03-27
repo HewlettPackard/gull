@@ -29,13 +29,13 @@
 #include <memory>
 
 #include "nvmm/error_code.h"
-#include "nvmm/shelf_id.h" // for PoolId
 #include "nvmm/global_ptr.h" // for GlobalPtr
+#include "nvmm/shelf_id.h"   // for PoolId
 
 #include "nvmm/heap.h"
 #include "nvmm/region.h"
 
-namespace nvmm{
+namespace nvmm {
 
 #define METADATA_REGION_ID 1
 #define METADATA_REGION_NAME 2
@@ -43,45 +43,41 @@ namespace nvmm{
 
 // Global bootstrapping functions for NVMM
 
-
-// config nvmm such that shelves will be created at base/, and with user as prefix to each shelf
-// Create necessary files to bootstrap the memory manager and epoch manager
-// file name
-// this function is NOT thread-safe/process-safe
-// this function must run once and only once in both single-node and multi-node environments,
-// before the first call to GetInstance()
+// config nvmm such that shelves will be created at base/, and with user as
+// prefix to each shelf Create necessary files to bootstrap the memory manager
+// and epoch manager file name this function is NOT thread-safe/process-safe
+// this function must run once and only once in both single-node and multi-node
+// environments, before the first call to GetInstance()
 int StartNVMM(std::string base = "", std::string user = "");
 
-// Delete all previous shelves, resetting both the memory manager and epoch manager
-// this function is NOT thread-safe/process-safe
-// this function can only run when no one is using the memory manager
-void ResetNVMM(std::string base="", std::string user="");
+// Delete all previous shelves, resetting both the memory manager and epoch
+// manager this function is NOT thread-safe/process-safe this function can only
+// run when no one is using the memory manager
+void ResetNVMM(std::string base = "", std::string user = "");
 
 // Restart current memory manager and epoch manager instances
 // used when one wants to switch to another base/user or wants to fork()
-// this will stop current instances, remove all existing shelves, change base and user if necessary,
-// and finally starting from fresh
-// this function assumes that there is already a running NVMM instance; it can only be called after NVMM has been bootstrapped
-void RestartNVMM(std::string base="", std::string user="");
-
-
+// this will stop current instances, remove all existing shelves, change base
+// and user if necessary, and finally starting from fresh this function assumes
+// that there is already a running NVMM instance; it can only be called after
+// NVMM has been bootstrapped
+void RestartNVMM(std::string base = "", std::string user = "");
 
 // TODO: Current limitation:
-// - No pool-id management/assignment (clients of mm must agree upon a set of pool ids that each
-// wants to use, e.g., 1 and 2 for item store, 3 for metadata store, etc)
+// - No pool-id management/assignment (clients of mm must agree upon a set of
+// pool ids that each wants to use, e.g., 1 and 2 for item store, 3 for metadata
+// store, etc)
 // - No multi-process support for pool (heap/region) creation and destroy
-class MemoryManager
-{
-public:
-
+class MemoryManager {
+  public:
     // there is only one instance of MemoryManager in a process
     // return a pointer to the instance
     static MemoryManager *GetInstance();
 
     // helper functions to make it work with fork
     // be careful that there may be other threads using this instance!
-    // before forking, stop all the threads; after forking, start all the threads
-    // both functions are not thread/process safe
+    // before forking, stop all the threads; after forking, start all the
+    // threads both functions are not thread/process safe
     void Start();
     void Stop();
 
@@ -90,14 +86,15 @@ public:
        internally, mm only maps the pointer + size
        currently used by Zero-copy version of Get and Put
     */
-    ErrorCode MapPointer(GlobalPtr ptr, size_t size,
-                         void *addr_hint, int prot, int flags, void **mapped_addr);
+    ErrorCode MapPointer(GlobalPtr ptr, size_t size, void *addr_hint, int prot,
+                         int flags, void **mapped_addr);
     ErrorCode UnmapPointer(GlobalPtr ptr, void *mapped_addr, size_t size);
 
     /*
        methods to access a global pointer, without knowning its size
-       internally, mm would use ShelfManager to map entire shelf if it is not mapped
-       for general use cases (e.g., accessing a pointer allocated from a Heap)
+       internally, mm would use ShelfManager to map entire shelf if it is not
+       mapped for general use cases (e.g., accessing a pointer allocated from a
+       Heap)
     */
     void *GlobalToLocal(GlobalPtr ptr);
     GlobalPtr LocalToGlobal(void *addr);
@@ -128,8 +125,8 @@ public:
     // - NO_ERROR: heap is found and returned
     // - ID_NOT_FOUND: heap of the given id is not found
     // NOTE
-    // - It will always return a new heap object even if the heap was already created/opened in the
-    // same process
+    // - It will always return a new heap object even if the heap was already
+    // created/opened in the same process
     // - The best use pattern is to find and open a heap once in a process
     ErrorCode FindHeap(PoolId id, Heap **heap);
 
@@ -155,23 +152,22 @@ public:
     // - caller must make sure no other processes are still accessing this heap
     ErrorCode DestroyRegion(PoolId id);
 
-    // Find the region by id and return a pointer to the region object if it exists
-    // Caller is responsible for freeing the poitner
-    // Return
+    // Find the region by id and return a pointer to the region object if it
+    // exists Caller is responsible for freeing the poitner Return
     // - NO_ERROR: region is found and returned
     // - ID_NOT_FOUND: region of the given id is not found
     // NOTE
-    // - It will always return a new region object even if the region was already created/opened in the
-    // same process
+    // - It will always return a new region object even if the region was
+    // already created/opened in the same process
     // - The best use pattern is to find and open a region once in a process
     ErrorCode FindRegion(PoolId id, Region **region);
 
-    // Find the region by id and return a pointer to the region object if it exists
-    // Caller is responsible for freeing the poitner
-    // Return NULL if region of the given id is not found
+    // Find the region by id and return a pointer to the region object if it
+    // exists Caller is responsible for freeing the poitner Return NULL if
+    // region of the given id is not found
     Region *FindRegion(PoolId id);
 
-    // Return the address reserved for bitmap for region id 
+    // Return the address reserved for bitmap for region id
     // management in memory server
     void *GetRegionIdBitmapAddr();
 
@@ -189,15 +185,12 @@ public:
     // Set the global pointer for ATL region data
     GlobalPtr SetATLRegionRootPtr(int type, GlobalPtr);
 
-
-
-private:
-
+  private:
     MemoryManager();
     ~MemoryManager();
 
     class Impl_;
-    //std::unique_ptr<Impl_> pimpl_;
+    // std::unique_ptr<Impl_> pimpl_;
     Impl_ *pimpl_;
 };
 } // namespace nvmm

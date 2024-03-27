@@ -1,5 +1,3 @@
-
-
 set(COVERAGE_REMOVE_PATHS
     '/usr/*'
     '${PROJECT_SOURCE_DIR}/third-party/*'

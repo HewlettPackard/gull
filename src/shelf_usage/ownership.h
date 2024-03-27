@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -29,11 +29,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "common/process_id.h"
 #include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h"
-#include "common/process_id.h"
 
-namespace nvmm{
+namespace nvmm {
 
 /*
   ownership layout:
@@ -42,32 +42,25 @@ namespace nvmm{
     - size_t size;
     - size_t item_count;
   - item[list_count];
- */    
-class Ownership
-{
-public:
-    using RecoverFn = std::function<ErrorCode (ShelfIndex)>;    
-    
+ */
+class Ownership {
+  public:
+    using RecoverFn = std::function<ErrorCode(ShelfIndex)>;
+
     Ownership() = delete;
     // addr must be aligned to cacheline size
-    // avail_size is the available space in the shelf starting from addr        
+    // avail_size is the available space in the shelf starting from addr
     Ownership(void *addr, size_t avail_size);
     ~Ownership();
 
-    // after calling Create/Destroy, Size() will return the actual size of memory consumed by this
-    // data structure
+    // after calling Create/Destroy, Size() will return the actual size of
+    // memory consumed by this data structure
     ErrorCode Create(size_t item_count);
     ErrorCode Destroy();
-    bool Verify();    
-    bool IsOpen() const
-    {
-        return is_open_;
-    }
-    size_t Size() const
-    {
-        return size_;
-    }
-    
+    bool Verify();
+    bool IsOpen() const { return is_open_; }
+    size_t Size() const { return size_; }
+
     ErrorCode Open();
     ErrorCode Close();
 
@@ -76,19 +69,16 @@ public:
     bool CheckItem(size_t item_idx);
     void CheckAndRevokeItem(size_t item_idx);
     void CheckAndRevokeItem(size_t item_idx, RecoverFn func);
-    size_t Count() const
-    {
-        return item_count_;
-    }
-    
-private:
+    size_t Count() const { return item_count_; }
+
+  private:
     static uint64_t const kMagicNum = 696377447; // ownership
-    
+
     bool is_open_;
-    void *addr_; // the address this data structure is mapped to
+    void *addr_;  // the address this data structure is mapped to
     size_t size_; // size of the data structure in FAM
     ProcessID pid_;
-    
+
     size_t item_count_;
     ProcessID *items_; // an array of ProcessIDs (pid + btime)
 };

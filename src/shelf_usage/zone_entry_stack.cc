@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -34,17 +34,20 @@
 
 #include "nvmm/fam.h"
 
-#include "shelf_usage/zone_entry_stack.h"
 #include "shelf_usage/zone_entry.h"
+#include "shelf_usage/zone_entry_stack.h"
 
 namespace nvmm {
 
 void ZoneEntryStack::push(void *addr, uint64_t idx_) {
-    // idx 0 is reserved for empty stack so all actual idxes are shifted right by 1
-    uint64_t idx = idx_+1;
+    // idx 0 is reserved for empty stack so all actual idxes are shifted right
+    // by
+    // 1
+    uint64_t idx = idx_ + 1;
 
-    uint64_t* entry_ptr = (uint64_t*)addr + idx;
-    // TODO: can we avoid this atomic read? maybe we should pass in the zone_entry value?
+    uint64_t *entry_ptr = (uint64_t *)addr + idx;
+    // TODO: can we avoid this atomic read? maybe we should pass in the
+    // zone_entry value?
     zone_entry entry = (zone_entry)fam_atomic_u64_read(entry_ptr);
 
     uint64_t old[2], store[2], result[2];
@@ -58,7 +61,7 @@ void ZoneEntryStack::push(void *addr, uint64_t idx_) {
         store[0] = idx;
         store[1] = old[1] + 1;
         fam_atomic_u128_compare_and_store(&head, old, store, result);
-        if (result[0]==old[0] && result[1]==old[1])
+        if (result[0] == old[0] && result[1] == old[1])
             return;
 
         old[0] = result[0];
@@ -76,15 +79,15 @@ uint64_t ZoneEntryStack::pop(void *addr) {
         if (idx == 0)
             break;
 
-        uint64_t* entry_ptr = (uint64_t*)addr + idx;
+        uint64_t *entry_ptr = (uint64_t *)addr + idx;
         // would an atomic read be faster here?
         zone_entry entry = (zone_entry)fam_atomic_u64_read(entry_ptr);
 
         store[0] = entry.next();
         store[1] = old[1] + 1;
         fam_atomic_u128_compare_and_store(&head, old, store, result);
-        if (result[0]==old[0] && result[1]==old[1])
-            return idx-1;
+        if (result[0] == old[0] && result[1] == old[1])
+            return idx - 1;
 
         old[0] = result[0];
         old[1] = result[1];
@@ -93,5 +96,4 @@ uint64_t ZoneEntryStack::pop(void *addr) {
     return 0;
 }
 
-
-}
+} // namespace nvmm

@@ -2,11 +2,11 @@
  *  (c) Copyright 2016-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -24,8 +24,8 @@
  */
 
 #include <errno.h>
-#include <signal.h> // kill()
 #include <fstream>
+#include <signal.h> // kill()
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -33,62 +33,45 @@
 
 #include "common/process_id.h"
 
+namespace nvmm {
 
-namespace nvmm{
-   
-ProcessID::ProcessID()
-    : pid_{0}, btime_{0}
-{
-};
+ProcessID::ProcessID() : pid_{0}, btime_{0} {};
 
-bool ProcessID::IsValid()
-{
-    return pid_!=0 && btime_!=0;
-}
+bool ProcessID::IsValid() { return pid_ != 0 && btime_ != 0; }
 
-void ProcessID::SetPid()
-{
-    SetPid(getpid());
-}
+void ProcessID::SetPid() { SetPid(getpid()); }
 
-void ProcessID::SetPid(uint64_t pid)
-{
+void ProcessID::SetPid(uint64_t pid) {
     btime_ = GetBtime(pid);
-    if (btime_!=0)
+    if (btime_ != 0)
         pid_ = pid;
     else
         pid_ = 0;
 }
 
-bool ProcessID::IsAlive()
-{
-    assert (IsValid() == true);
-    
-    if (kill((pid_t)pid_,0) == 0)
-    {
+bool ProcessID::IsAlive() {
+    assert(IsValid() == true);
+
+    if (kill((pid_t)pid_, 0) == 0) {
         // seems to be alive
         // alive
-        //LOG(fatal) << "DistHeap: process " << pid_ << " is alive";
-        
+        // LOG(fatal) << "DistHeap: process " << pid_ << " is alive";
+
         uint64_t btime = GetBtime(pid_);
         if (btime == btime_)
             return true;
         else
-            return false;        
-    }
-    else
-    {
-        if (errno == ESRCH)
-        {
+            return false;
+    } else {
+        if (errno == ESRCH) {
             // dead
             LOG(fatal) << "DistHeap: process " << pid_ << " is gone";
             return false;
-        }
-        else
-        {
+        } else {
             // other error...
-            LOG(fatal) << "DistHeap: process " << pid_ << " is experiencing problems? "
-                       << "errno " << strerror(errno);
+            LOG(fatal) << "DistHeap: process " << pid_
+                       << " is experiencing problems? " << "errno "
+                       << strerror(errno);
             uint64_t btime = GetBtime(pid_);
             if (btime == btime_)
                 return true;
@@ -98,21 +81,17 @@ bool ProcessID::IsAlive()
     }
 }
 
-uint64_t ProcessID::GetBtime(uint64_t pid)
-{
-    std::string path = "/proc/"+std::to_string(pid)+"/stat";
+uint64_t ProcessID::GetBtime(uint64_t pid) {
+    std::string path = "/proc/" + std::to_string(pid) + "/stat";
     std::ifstream file(path);
-    if (file.good())
-    {
+    if (file.good()) {
         std::string item;
-        int count=0;
-        while(std::getline(file, item, ' '))
-        {
+        int count = 0;
+        while (std::getline(file, item, ' ')) {
             count++;
-            if (count==22)
-            {
-                //std::cout << item << std::endl;
-                //LOG(fatal) << "GetBtime: (" << count <<") " << item;
+            if (count == 22) {
+                // std::cout << item << std::endl;
+                // LOG(fatal) << "GetBtime: (" << count <<") " << item;
                 return std::stol(item);
             }
         }

@@ -35,12 +35,12 @@ namespace nvmm {
 #define CACHE_LINE_SIZE 64
 
 static int const kCacheLineSize = CACHE_LINE_SIZE;
-static int const kVirtualPageSize = 64*1024;
+static int const kVirtualPageSize = 64 * 1024;
 
 /*
  * Permission mask
  */
-#define PERM_MASK (S_IRWXU|S_IRWXG|S_IRWXO) /* 0777 */
+#define PERM_MASK (S_IRWXU | S_IRWXG | S_IRWXO) /* 0777 */
 
 /*
  * Maximum supported heap size
@@ -56,7 +56,7 @@ static int const kVirtualPageSize = 64*1024;
  * multiple
  */
 static inline size_t round_up(size_t x, size_t multiple) {
-    return ((x+multiple-1)/multiple)*multiple;
+    return ((x + multiple - 1) / multiple) * multiple;
 }
 
 /*
@@ -75,7 +75,7 @@ static inline size_t round_up_with_zero_check(size_t x, size_t multiple) {
  * multiple
  */
 static inline size_t round_down(size_t x, size_t multiple) {
-    return x/multiple*multiple;
+    return x / multiple * multiple;
 }
 
 } // namespace nvmm

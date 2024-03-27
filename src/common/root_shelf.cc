@@ -26,19 +26,19 @@
 
 #include <string>
 
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <boost/filesystem/operations.hpp>
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <errno.h>
-#include <boost/filesystem/operations.hpp>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "nvmm/error_code.h"
 
+#include "nvmm/error_code.h"
 #include "nvmm/fam.h"
 #include "nvmm/log.h"
-#include "nvmm/error_code.h"
 #include "nvmm/shelf_id.h" // for PoolId
 
 #include "common/common.h"
@@ -49,220 +49,192 @@ namespace nvmm {
 
 // TODO: clean up redundant code
 RootShelf::RootShelf(std::string pathname)
-    : path_{pathname}, fd_{-1}, addr_{nullptr}
-{
-}
+    : path_{pathname}, fd_{-1}, addr_{nullptr} {}
 
-RootShelf::~RootShelf()
-{
-    if(IsOpen() == true)
-    {
+RootShelf::~RootShelf() {
+    if (IsOpen() == true) {
         (void)Close();
     }
 }
 
-bool RootShelf::Exist()
-{
+bool RootShelf::Exist() {
     // TODO: should also check magic number
     boost::filesystem::path shelf_path = boost::filesystem::path(path_.c_str());
     return boost::filesystem::exists(shelf_path);
 }
 
-bool RootShelf::IsOpen()
-{
-    return fd_ != -1;
-}
+bool RootShelf::IsOpen() { return fd_ != -1; }
 
-void *RootShelf::Addr()
-{
-    return (char*)addr_+kCacheLineSize;
-}
+void *RootShelf::Addr() { return (char *)addr_ + kCacheLineSize; }
 
-ErrorCode RootShelf::Create()
-{
+ErrorCode RootShelf::Create() {
     TRACE();
-    if (Exist() == true)
-    {
+    if (Exist() == true) {
         return SHELF_FILE_FOUND;
     }
-    if (IsOpen() == true)
-    {
+    if (IsOpen() == true) {
         return SHELF_FILE_OPENED;
     }
     mode_t oldmask = umask(0);
-    int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+    int fd = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR,
+                  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     umask(oldmask);
-    if (fd == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to create the root shelf file " << path_;
+    if (fd == -1) {
+        LOG(fatal) << "RootShelf: Failed to create the root shelf file "
+                   << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
     uint64_t length = round_up_with_zero_check(kShelfSize, config.PageSize);
     int ret = ftruncate(fd, length);
-    if (ret == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to truncate the root shelf file " << path_;
+    if (ret == -1) {
+        LOG(fatal) << "RootShelf: Failed to truncate the root shelf file "
+                   << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
     void *addr = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (addr == MAP_FAILED)
-    {
+    if (addr == MAP_FAILED) {
         LOG(fatal) << "RootShelf: Failed to mmap the root shelf file " << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
 
-    //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr;
+    // LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr;
     ret = fam_atomic_register_region(addr, length, fd, 0);
-    if (ret == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to register fam atomic region " << path_;
+    if (ret == -1) {
+        LOG(fatal) << "RootShelf: Failed to register fam atomic region "
+                   << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
     memset(addr, 0, length);
 
     // leave space for the magic number
-    char *cur = (char*)addr;
-    cur+=kCacheLineSize;
+    char *cur = (char *)addr;
+    cur += kCacheLineSize;
 
     // each pool will have a fam spinlock in this root shelf file
     // for multi-process/multi-node
-    nvmm_fam_spinlock* array = (nvmm_fam_spinlock*)cur;
-    for(int i=0; i<ShelfId::kMaxPoolCount; i++)
-    {
+    nvmm_fam_spinlock *array = (nvmm_fam_spinlock *)cur;
+    for (int i = 0; i < ShelfId::kMaxPoolCount; i++) {
         array[i].init();
     }
 
-    // there is also an array of cacheline-sized entires, e.g., to store pool type
-    size_t size = ShelfId::kMaxPoolCount*kCacheLineSize;
-    cur+=size;
+    // there is also an array of cacheline-sized entires, e.g., to store pool
+    // type
+    size_t size = ShelfId::kMaxPoolCount * kCacheLineSize;
+    cur += size;
     memset(cur, 0, size);
 
-    // Make sure all updates are persisted     
+    // Make sure all updates are persisted
     fam_persist(addr, kShelfSize);
 
     // finally set the magic number
-    fam_atomic_u64_write((uint64_t*)addr, kMagicNum);
+    fam_atomic_u64_write((uint64_t *)addr, kMagicNum);
 
-    //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr;
+    // LOG(fatal) << "unregister fam atomic " << (uint64_t)addr;
     fam_atomic_unregister_region(addr, length);
 
     ret = munmap(addr, length);
-    if (ret == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to unmap the root shelf file " << path_;
+    if (ret == -1) {
+        LOG(fatal) << "RootShelf: Failed to unmap the root shelf file "
+                   << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
 
     ret = close(fd);
-    if (ret == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to close the root shelf file " << path_;
+    if (ret == -1) {
+        LOG(fatal) << "RootShelf: Failed to close the root shelf file "
+                   << path_;
         return SHELF_FILE_CREATE_FAILED;
     }
 
     return NO_ERROR;
 }
 
-ErrorCode RootShelf::Destroy()
-{
+ErrorCode RootShelf::Destroy() {
     TRACE();
     ErrorCode ret = NO_ERROR;
-    if (Exist() == false)
-    {
+    if (Exist() == false) {
         ret = SHELF_FILE_NOT_FOUND;
     }
-    if (IsOpen() == true)
-    {
+    if (IsOpen() == true) {
         return SHELF_FILE_OPENED;
     }
 
     boost::filesystem::path shelf_path = boost::filesystem::path(path_.c_str());
 
-    // remove() returns false if the path did not exist in the first place, otherwise true.
-    // NOTE: boost::filesystem::remove() is racy at least up to 1.57.0, see
-    // https://svn.boost.org/trac/boost/ticket/11166
-    // therefore, we try to catch the exception and prevent it from being exposed
-    try
-    {
+    // remove() returns false if the path did not exist in the first place,
+    // otherwise true. NOTE: boost::filesystem::remove() is racy at least up
+    // to 1.57.0, see https://svn.boost.org/trac/boost/ticket/11166 therefore,
+    // we try to catch the exception and prevent it from being exposed
+    try {
         (void)boost::filesystem::remove(shelf_path);
-    }
-    catch (boost::filesystem::filesystem_error const &err)
-    {
-        if(err.code().value() == 2)
-        {
-            LOG(trace) << "boost::filesystem::remove - BUGGY exceptions " << err.code();
-        }
-        else
-        {
-            LOG(fatal) << "boost::filesystem::remove - REAL exceptions" << err.code();
-            throw (err);
+    } catch (boost::filesystem::filesystem_error const &err) {
+        if (err.code().value() == 2) {
+            LOG(trace) << "boost::filesystem::remove - BUGGY exceptions "
+                       << err.code();
+        } else {
+            LOG(fatal) << "boost::filesystem::remove - REAL exceptions"
+                       << err.code();
+            throw(err);
         }
     }
     return ret;
 }
 
-ErrorCode RootShelf::Open()
-{
+ErrorCode RootShelf::Open() {
     TRACE();
-    if(IsOpen() == true)
-    {
+    if (IsOpen() == true) {
         return SHELF_FILE_OPENED;
     }
 
     fd_ = open(path_.c_str(), O_RDWR);
-    if (fd_ == -1)
-    {
+    if (fd_ == -1) {
         LOG(fatal) << "RootShelf: Failed to open the root shelf file " << path_;
         return SHELF_FILE_OPEN_FAILED;
     }
     uint64_t length = round_up_with_zero_check(kShelfSize, config.PageSize);
     addr_ = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
-    if (addr_ == MAP_FAILED)
-    {
+    if (addr_ == MAP_FAILED) {
         LOG(fatal) << "RootShelf: Failed to mmap the root shelf file " << path_;
         return SHELF_FILE_OPEN_FAILED;
     }
 
-    //LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr_;
+    // LOG(fatal) << "register fam atomic " << path_ << " " << (uint64_t)addr_;
     int ret = fam_atomic_register_region(addr_, (uint64_t)length, fd_, 0);
-    if (ret == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to register fam atomic region " << path_;
+    if (ret == -1) {
+        LOG(fatal) << "RootShelf: Failed to register fam atomic region "
+                   << path_;
         return SHELF_FILE_OPEN_FAILED;
     }
 
-    uint64_t magic_num = fam_atomic_u64_read((uint64_t*)addr_);
+    uint64_t magic_num = fam_atomic_u64_read((uint64_t *)addr_);
     if (magic_num == kMagicNum)
         return NO_ERROR;
-    else
-    {
+    else {
         (void)Close();
         return SHELF_FILE_OPEN_FAILED;
     }
 }
 
-ErrorCode RootShelf::Close()
-{
+ErrorCode RootShelf::Close() {
     TRACE();
-    if(IsOpen() == false)
-    {
+    if (IsOpen() == false) {
         return SHELF_FILE_CLOSED;
     }
 
-    //LOG(fatal) << "unregister fam atomic " << (uint64_t)addr_;
+    // LOG(fatal) << "unregister fam atomic " << (uint64_t)addr_;
     uint64_t length = round_up_with_zero_check(kShelfSize, config.PageSize);
     fam_atomic_unregister_region(addr_, length);
     int ret = munmap(addr_, length);
-    if (ret == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to unmap the root shelf file " << path_;
+    if (ret == -1) {
+        LOG(fatal) << "RootShelf: Failed to unmap the root shelf file "
+                   << path_;
         return SHELF_FILE_CLOSE_FAILED;
     }
 
     ret = close(fd_);
-    if (ret == -1)
-    {
-        LOG(fatal) << "RootShelf: Failed to close the root shelf file " << path_;
+    if (ret == -1) {
+        LOG(fatal) << "RootShelf: Failed to close the root shelf file "
+                   << path_;
         return SHELF_FILE_CLOSE_FAILED;
     }
 

@@ -2,11 +2,11 @@
  *  (c) Copyright 2018-2021 Hewlett Packard Enterprise Development Company LP.
  *
  *  This software is available to you under a choice of one of two
- *  licenses. You may choose to be licensed under the terms of the 
- *  GNU Lesser General Public License Version 3, or (at your option)  
- *  later with exceptions included below, or under the terms of the  
+ *  licenses. You may choose to be licensed under the terms of the
+ *  GNU Lesser General Public License Version 3, or (at your option)
+ *  later with exceptions included below, or under the terms of the
  *  MIT license (Expat) available in COPYING file in the source tree.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -31,91 +31,90 @@
 
 using namespace nvmm;
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     init_log(boost::log::trivial::severity_level::fatal);
 
     MemoryManager *mm = MemoryManager::GetInstance();
 
     // create a new 128MB NVM region with pool id 2
     PoolId pool_id = 8;
-    size_t size = 128*1024*1024; // 128MB
+    size_t size = 128 * 1024 * 1024; // 128MB
     ErrorCode ret = mm->CreateHeap(pool_id, size);
-    std::cout<<"CreateHeap, ret= "<<ret<<std::endl;
+    std::cout << "CreateHeap, ret= " << ret << std::endl;
     assert(ret == NO_ERROR);
-    
+
     // acquire the heap
     Heap *heap = NULL;
     ret = mm->FindHeap(pool_id, &heap);
-    std::cout<<"FindHeap, ret= "<<ret<<std::endl;
+    std::cout << "FindHeap, ret= " << ret << std::endl;
     assert(ret == NO_ERROR);
 
     // open the heap
-    ret =  heap->Open();
-    std::cout<<"Heap->Open, ret= "<<ret<<std::endl;
+    ret = heap->Open();
+    std::cout << "Heap->Open, ret= " << ret << std::endl;
     assert(ret == NO_ERROR);
-    
+
     // use the heap
-    GlobalPtr ptr = heap->Alloc(sizeof(int));  // Alloc returns a GlobalPtr consisting of a shelf ID
-                                               // and offset
-    std::cout<<"Allocated from heap"<<ptr<<std::endl;
+    GlobalPtr ptr =
+        heap->Alloc(sizeof(int)); // Alloc returns a GlobalPtr consisting of a
+                                  // shelf ID and offset
+    std::cout << "Allocated from heap" << ptr << std::endl;
 
     assert(ptr.IsValid() == true);
 
-    int *int_ptr = (int*)mm->GlobalToLocal(ptr);  // convert the GlobalPtr into a local pointer
-    std::cout<<"GlobalToLocal done"<<ptr<<std::endl;
+    int *int_ptr = (int *)mm->GlobalToLocal(
+        ptr); // convert the GlobalPtr into a local pointer
+    std::cout << "GlobalToLocal done" << ptr << std::endl;
 
     *int_ptr = 123;
     assert(*int_ptr == 123);
 
     heap->Free(ptr);
-    std::cout<<"heap->free done"<<ptr<<std::endl;
+    std::cout << "heap->free done" << ptr << std::endl;
 
-    ret = heap->Resize(256*1024*1024);
-    std::cout<<"Resize status : " << ret << std::endl;
+    ret = heap->Resize(256 * 1024 * 1024);
+    std::cout << "Resize status : " << ret << std::endl;
     assert(ret == NO_ERROR);
 
-    ret = heap->Resize(384*1024*1024);
-    std::cout<<"Resize status : " << ret << std::endl;
+    ret = heap->Resize(384 * 1024 * 1024);
+    std::cout << "Resize status : " << ret << std::endl;
     assert(ret == NO_ERROR);
     // close the heap
     ret = heap->Close();
-    std::cout<<"heap->Close done"<<ptr<<std::endl;
+    std::cout << "heap->Close done" << ptr << std::endl;
     assert(ret == NO_ERROR);
     delete heap;
 
-
     ret = mm->FindHeap(pool_id, &heap);
-    std::cout<<"FindHeap, ret= "<<ret<<std::endl;
+    std::cout << "FindHeap, ret= " << ret << std::endl;
     assert(ret == NO_ERROR);
-     
+
     // open the heap
-    ret =  heap->Open();
-    std::cout<<"Heap->Open, ret= "<<ret<<std::endl;
+    ret = heap->Open();
+    std::cout << "Heap->Open, ret= " << ret << std::endl;
     assert(ret == NO_ERROR);
-    
+
     GlobalPtr ptr_array[10000];
     int *int_ptr_array[10000];
 
-    for (int j = 0;j<10000;j++)
-    {
-       ptr_array[j] = heap->Alloc(1024*32);
-       int_ptr_array[j] = (int*)mm->GlobalToLocal(ptr_array[j]);
-       *int_ptr_array[j] =  j+1;
+    for (int j = 0; j < 10000; j++) {
+        ptr_array[j] = heap->Alloc(1024 * 32);
+        int_ptr_array[j] = (int *)mm->GlobalToLocal(ptr_array[j]);
+        *int_ptr_array[j] = j + 1;
     }
-    for (int j = 0;j<10000;j++)
-    {
-       if(j%100==0)
-            std::cout<<"Freeing "<<ptr_array[j]<<" it has value "<<*int_ptr_array[j]<<std::endl;
-       assert(*int_ptr_array[j]==j+1);
-       
-       heap->Free(ptr_array[j]);
+    for (int j = 0; j < 10000; j++) {
+        if (j % 100 == 0)
+            std::cout << "Freeing " << ptr_array[j] << " it has value "
+                      << *int_ptr_array[j] << std::endl;
+        assert(*int_ptr_array[j] == j + 1);
+
+        heap->Free(ptr_array[j]);
     }
-    std::cout<<"Created data items and verified it too"<<std::endl;
+    std::cout << "Created data items and verified it too" << std::endl;
     ret = heap->Close();
     // release the heap
     delete heap;
-    
+
     // delete the heap
     ret = mm->DestroyHeap(pool_id);
     assert(ret == NO_ERROR);
